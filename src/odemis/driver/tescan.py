@@ -175,19 +175,20 @@ class SEM(model.HwComponent):
     metadata.
     """
 
-    def __init__(self, name, role, children, host, daemon=None, **kwargs):
+    def __init__(self, name, role, children, host, port=8300, daemon=None, **kwargs):
         """
         children (dict string->kwargs): parameters setting for the children.
             Known children are "scanner", "detector", "stage", "focus", "camera"
             and "pressure". They will be provided back in the .children VA
         host (string): ip address of the SEM server
+        port (int): TCP port of the SEM server (default: 8300)
         Raise an exception if the device cannot be opened
         """
         # we will fill the set of children with Components later in ._children
         model.HwComponent.__init__(self, name, role, daemon=daemon, **kwargs)
 
         self._host = host
-        self._port = 8300
+        self._port = port
         self._socket_timeout = 2  # Seconds. This value is a balance for responsiveness vs how much frames you lose
         self._connect_socket()
         # Lock in order to synchronize all the child component functions
@@ -601,6 +602,20 @@ class SEM(model.HwComponent):
         self._device = None
 
         super(SEM, self).terminate()
+
+    @property
+    def host(self):
+        """
+        str: The IP address of the SEM server
+        """
+        return self._host
+
+    @property
+    def port(self):
+        """
+        int: The TCP port of the SEM server
+        """
+        return self._port
 
 
 class Scanner(model.Emitter):

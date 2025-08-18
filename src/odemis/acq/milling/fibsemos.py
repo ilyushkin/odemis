@@ -85,9 +85,10 @@ def create_fibsemos_tescan_microscope() -> 'OdemisTescanMicroscope':
     config.system.stage.rotation_180 = math.degrees(rotation_reference + math.pi)
     microscope = OdemisTescanMicroscope(config.system)
 
-    # TODO: Read from the fibsem component .host attribute
-    ip_address: str = "192.168.56.101"
-    port: int = 8300
+    # Get the Tescan SEM component to extract host and port info
+    sem = model.getComponent(role="sem")
+    ip_address: str = sem.host
+    port: int = sem.port
     microscope.connect_to_microscope(ip_address, port)
 
     return microscope
