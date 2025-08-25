@@ -668,7 +668,16 @@ def create_setting_entry(container, name, va, hw_comp, conf=None, change_callbac
     # Determine the control type to use, either from config or some 'smart' default
     control_type = determine_control_type(hw_comp, va, choices_formatted, conf)
 
-    # Special case, early stop
+    # Some drivers (e.g., Tescan during early init) temporarily expose
+    # VAs with choices=None while the GUI already attempts to build RADIO/COMBO controls.
+    # That led to a TypeError: 'NoneType' object is not iterable when iterating choices_formatted.
+    # If a choice-based control was selected but no choices are available yet,
+    # skip creating the entry (it can be added later when the tab refreshes) instead of crashing.
+    if control_type in (odemis.gui.CONTROL_RADIO, odemis.gui.CONTROL_COMBO) and not choices_formatted:
+        logging.warning("Skipping setting %s: no choices available yet (control=%s)", name, control_type)
+        return None
+
+    # (Keep this after the guard so CONTROL_NONE still returns immediately.)
     if control_type == odemis.gui.CONTROL_NONE:
         return None
 
