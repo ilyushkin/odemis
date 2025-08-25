@@ -33,7 +33,7 @@ import weakref
 from typing import List, Literal, Callable, Any, Dict, Tuple, Union
 
 import numpy
-from tescan import sem
+from tescansharksem import sem
 
 from odemis import model, util
 from odemis.model import (HwError, isasync, CancellableThreadPoolExecutor,
@@ -1619,6 +1619,67 @@ class EbeamFocus(model.Actuator):
             self.stop()
             self._executor.shutdown()
             self._executor = None
+
+
+class IonFocus(model.Actuator):
+    """
+    This is an extension of the model.Actuator class. It provides functions for
+    adjusting the ion beam focus by changing the working distance i.e. the distance
+    between the end of the objective and the surface of the observed specimen
+    """
+    def __init__(self, name, role, parent, axes, ranges=None, **kwargs):
+        assert len(axes) > 0
+        if ranges is None:
+            ranges = {}
+
+        axes_def = {}
+        self._position = {}
+
+        # Just z axis
+        a = axes[0]
+        # The maximum, obviously, is not 1 meter. We do not actually care
+        # about the range since Tescan API will adjust the value set if the
+        # required one is out of limits.
+        rng = ranges.get(a, (0, 1))
+        axes_def[a] = model.Axis(unit="m", range=rng)
+
+        model.Actuator.__init__(self, name, role, parent=parent, axes=axes_def, **kwargs)
+
+        # RO, as to modify it the client must use .moveRel() or .moveAbs()
+        self.position = model.VigilantAttribute({}, unit="m", readonly=True)
+        self._updatePosition()
+
+        # will take care of executing axis move asynchronously
+        self._executor = CancellableThreadPoolExecutor(max_workers=1)  # one task at a time
+
+    def _updatePosition(self):
+        """
+        update the position VA
+        """
+        pass
+
+    def _doMove(self, pos):
+        """
+        move to the position
+        """
+        # Perform move through Tescan API
+        # Position from m to mm and inverted
+        pass
+
+    @isasync
+    def moveRel(self, shift):
+        pass
+
+    @isasync
+    def moveAbs(self, pos):
+        pass
+
+    def stop(self, axes=None):
+        # Empty the queue for the given axes
+        pass
+
+    def terminate(self):
+        pass
 
 
 class ChamberView(model.DigitalCamera):
