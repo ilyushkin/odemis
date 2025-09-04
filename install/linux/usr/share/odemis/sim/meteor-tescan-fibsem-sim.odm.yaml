@@ -1,4 +1,4 @@
-"MIMAS-FIBSEM-Sim": {
+"METEOR-FIBSEM-Sim": {
     class: Microscope,
     role: meteor,
 }
