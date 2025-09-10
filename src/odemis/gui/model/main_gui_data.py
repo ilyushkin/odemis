@@ -328,7 +328,11 @@ class MainGUIData(object):
                     required_roles += ["e-beam", "se-detector", "ebeam-focus",
                                        "ion-beam", "se-detector-ion"] #, "ion-focus"]
             elif self.role == "mimas":
-                required_roles += ["light", "stage", "focus", "align", "ion-beam"]
+                required_roles += ["light", "stage-bare", "focus", "ion-beam"]
+                # add additional roles when fibsem control enabled
+                if self.fibsem:
+                    required_roles += ["e-beam", "se-detector", "ebeam-focus",
+                                       "ion-beam", "se-detector-ion"] #, "ion-focus"]
             elif self.role in ("sparc", "sparc2"):
                 # SPARCv1 can also work without a lens
                 required_roles += ["e-beam"]
