@@ -49,9 +49,9 @@ POSITION_NAMES = {
     ALIGNMENT: "ALIGNMENT",
     COATING: "COATING",
     LOADING_PATH: "LOADING PATH",
-    MILLING: "MILLING",
-    SEM_IMAGING: "SEM IMAGING",
-    FM_IMAGING: "FM IMAGING",
+    MILLING: "MILLING",         # 5
+    SEM_IMAGING: "SEM IMAGING", # 6
+    FM_IMAGING: "FM IMAGING",   # 7
     GRID_1: "GRID 1",
     GRID_2: "GRID 2",
     THREE_BEAMS: "THREE BEAMS",
@@ -97,7 +97,7 @@ class MicroscopePostureManager:
                 return super().__new__(MeteorTFS1PostureManager)
             elif stage_version == "tfs_3":
                 return super().__new__(MeteorTFS3PostureManager)
-            elif stage_version in ["tescan_1", "tescan_2"]:
+            elif stage_version == "tescan_1":
                 return super().__new__(MeteorTescan1PostureManager)
             else:
                 raise ValueError(f"Stage version {stage_version} is not supported")
@@ -315,6 +315,7 @@ class MeteorPostureManager(MicroscopePostureManager):
         # pre-tilt is required for milling posture, but not all systems have it
         stage_md = self.stage.getMetadata()
         md_calib = stage_md.get(model.MD_CALIB, {})
+        logging.debug(f"md_calib {md_calib}")
         self.pre_tilt = md_calib.get(model.MD_SAMPLE_PRE_TILT, None)
         self.fib_column_tilt = TFS_FIB_COLUMN_TILT
 
@@ -1623,7 +1624,7 @@ class MeteorTescan1PostureManager(MeteorPostureManager):
 
         # Automatic conversion to sample-stage axes
         self._initialise_transformation(axes=["y", "z"], rotation=self.pre_tilt, shear=shear, scale=scale)
-        self.postures = [SEM_IMAGING, FM_IMAGING]
+        self.postures = [SEM_IMAGING, FM_IMAGING, MILLING]
 
     def check_calib_data(self, required_keys: set):
         """

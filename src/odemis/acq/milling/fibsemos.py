@@ -83,12 +83,16 @@ def create_fibsemos_tescan_microscope() -> 'OdemisTescanMicroscope':
     config.system.stage.rotation_reference = math.degrees(rotation_reference)
     # Used by fibsemOS for moving the stage flat to the ion beam
     config.system.stage.rotation_180 = math.degrees(rotation_reference + math.pi)
-    microscope = OdemisTescanMicroscope(config.system)
 
     # Get the Tescan SEM component to extract host and port info
-    sem = model.getComponent(role="sem")
-    ip_address: str = sem.host
-    port: int = sem.port
+    fibsem = model.getComponent(role="fibsem")
+    ip_address: str = "192.168.56.101" # fibsem.host
+    port: int = 8300 # fibsem.port
+    # set the ip address in the fibsemos config as well, overriding what was loaded from fibsemOS config file
+
+    config.system.info.ip_address = ip_address
+    microscope = OdemisTescanMicroscope(config.system)
+
     microscope.connect_to_microscope(ip_address, port)
 
     return microscope
@@ -97,7 +101,8 @@ def create_fibsemos_microscope() -> 'OdemisThermoMicroscope | OdemisTescanMicros
     """Create a fibsemOS microscope instance with the current microscope configuration.
     """
     # TODO: Eventually automatically select TFS or Tescan once create_fibsemos_tescan_microscope() can get host_ip/port from the fibsem component
-    return create_fibsemos_tfs_microscope()
+    #return create_fibsemos_tfs_microscope()
+    return create_fibsemos_tescan_microscope()
 
 def convert_pattern_to_fibsemos(p: MillingPatternParameters) -> 'BasePattern':
     """Convert from an Odemis pattern to a fibsemOS pattern"""

@@ -79,8 +79,8 @@
         rng: [[ -50.e-3, 50.e-3 ],
               [ -50.e-3, 50.e-3 ],
               [ 0, 94.e-3 ],
-              [ -0.4363323129985824, 1.0122909661567112 ],
-              [ -6.283185307179586, 6.283185307179586 ]
+              [ -0.4363323129985824, 1.0122909661567112 ], # -25 deg .. 58 deg
+              [ -6.283185307179586, 6.283185307179586 ]    # -360 deg .. 360 deg
         ],
         unit: ["m", "m", "m", "rad", "rad"],
         refproc: "Standard",
@@ -177,9 +177,9 @@
     },
     init: {
         axes: [ "y", "z" ], # name of the axes in the dependency, mapped to x,y (if identity transformation)0.4663076582 1.103377919
-        rotation: 0.523598775, # rad , 30° (should be equal to the pre-tilt angle of the shuttle being used) NOTE:
-        shear: [-0.4663076582, 0], # [-tan(rx_fm), 0], where rx_fm is equal to rx in FAV_FM_POS_ACTIVE 0.2679491924311227
-        scale: [1, 1.103377919] # [1, 1/cos(rx_fm)], where rx_fm is equal to rx in FAV_FM_POS_ACTIVE 1.035276180410083
+        rotation: 0, # rad , 30° (should be equal to the pre-tilt angle of the shuttle being used) NOTE:
+        shear: [0, 0], # [-tan(rx_fm), 0], where rx_fm is equal to rx in FAV_FM_POS_ACTIVE 0.2679491924311227
+        scale: [1, 1] # [1, 1/cos(rx_fm)], where rx_fm is equal to rx in FAV_FM_POS_ACTIVE 1.035276180410083
         #inverted: ["z"],
     },
 }
