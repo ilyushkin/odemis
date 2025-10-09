@@ -603,14 +603,14 @@ class SEM(model.HwComponent):
 
         super(SEM, self).terminate()
 
-    @property
+    @roattribute
     def host(self):
         """
         str: The IP address of the SEM server
         """
         return self._host
 
-    @property
+    @roattribute
     def port(self):
         """
         int: The TCP port of the SEM server

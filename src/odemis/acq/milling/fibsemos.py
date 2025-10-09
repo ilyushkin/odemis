@@ -86,8 +86,8 @@ def create_fibsemos_tescan_microscope() -> 'OdemisTescanMicroscope':
 
     # Get the Tescan SEM component to extract host and port info
     fibsem = model.getComponent(role="fibsem")
-    ip_address: str = "192.168.56.101" # fibsem.host
-    port: int = 8300 # fibsem.port
+    ip_address: str = fibsem.host
+    port: int = fibsem.port
     # set the ip address in the fibsemos config as well, overriding what was loaded from fibsemOS config file
 
     config.system.info.ip_address = ip_address
