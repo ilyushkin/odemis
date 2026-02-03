@@ -635,6 +635,10 @@ class BufferedCanvas(wx.Panel):
           use round() to get to an exact pixel.
 
         """
+        if isinstance(scale, tuple):
+            return ((p_pos[0] - p_buff_center[0]) * scale[0] + offset[0],
+                    -(p_pos[1] - p_buff_center[1]) * scale[1] + offset[1])
+
         return ((p_pos[0] - p_buff_center[0]) * scale + offset[0],
                 -(p_pos[1] - p_buff_center[1]) * scale + offset[1])
 
@@ -652,6 +656,9 @@ class BufferedCanvas(wx.Panel):
         :return: (float, float)
 
         """
+        if isinstance(scale, tuple):
+            return (p_buffer_center[0] + (b_pos[0] - offset[0]) / scale[0],
+                    p_buffer_center[1] - (b_pos[1] - offset[1]) / scale[1])
 
         return (p_buffer_center[0] + (b_pos[0] - offset[0]) / scale,
                 p_buffer_center[1] - (b_pos[1] - offset[1]) / scale)
@@ -801,6 +808,7 @@ class BitmapCanvas(BufferedCanvas):
         self.merge_ratio = 0.3
         self.scale = 1.0  # px/m
         self.margins = (0, 0)
+        self.xy_ratio = 1.0
 
     def clear(self):
         """ Remove the images and clear the canvas """
@@ -1305,7 +1313,13 @@ class BitmapCanvas(BufferedCanvas):
                      p_im_center[1] + (scaled_im_size[1] / 2))
 
         # Translate to buffer coordinates (remember, buffer is world + scale)
-        b_topleft = self.phys_to_buffer(p_topleft, self.get_half_buffer_size())
+        b_topleft = super().phys_to_buffer_pos(
+            p_topleft,
+            self.p_buffer_center,
+            self.scale,
+            self.get_half_buffer_size()
+        )
+
         # Adjust the size to the buffer scale (on top of the earlier image
         # scale)
         final_size = (scaled_im_size[0] * self.scale, scaled_im_size[1] * self.scale)
@@ -1318,7 +1332,7 @@ class BitmapCanvas(BufferedCanvas):
         return super(BitmapCanvas, self).phys_to_buffer_pos(
             pos,
             self.p_buffer_center,
-            self.scale,
+            (self.scale, self.scale * self.xy_ratio),
             offset
         )
 
@@ -1326,7 +1340,7 @@ class BitmapCanvas(BufferedCanvas):
         return super(BitmapCanvas, self).buffer_to_phys_pos(
             pos,
             self.p_buffer_center,
-            self.scale,
+            (self.scale, self.scale * self.xy_ratio),
             offset
         )
 
@@ -1335,7 +1349,7 @@ class BitmapCanvas(BufferedCanvas):
             pos,
             self.p_buffer_center,
             self.margins,
-            self.scale,
+            (self.scale, self.scale * self.xy_ratio),
             offset)
 
     def phys_to_view(self, pos, offset=(0, 0)):
@@ -1343,11 +1357,12 @@ class BitmapCanvas(BufferedCanvas):
         # or remove from argument and always use the right value
         # Or is it needed to convert a distance from phys (m) to view (px)?
         # => just use a special argument or function
+
         return super(BitmapCanvas, self).phys_to_view_pos(
             pos,
             self.p_buffer_center,
             self.margins,
-            self.scale,
+            (self.scale, self.scale * self.xy_ratio),
             offset)
 
     def view_to_buffer(self, pos):
@@ -1564,7 +1579,7 @@ class DraggableCanvas(BitmapCanvas):
             self.Refresh()
 
             # recompute the view
-            offset = (-shift[0] / self.scale, shift[1] / self.scale)
+            offset = (-shift[0] / self.scale, shift[1] / (self.scale * self.xy_ratio))
             new_pos = [self.p_buffer_center[0] + offset[0],
                        self.p_buffer_center[1] + offset[1]]
             logging.debug("Double click at %s", new_pos)
@@ -1636,7 +1651,7 @@ class DraggableCanvas(BitmapCanvas):
 
         :param shift: (int, int) delta in buffer coordinates (pixels)
         """
-        offset = (-shift[0] / self.scale, shift[1] / self.scale)
+        offset = (-shift[0] / self.scale, shift[1] / (self.scale * self.xy_ratio))
         self.recenter_buffer((self.p_buffer_center[0] + offset[0],
                               self.p_buffer_center[1] + offset[1]))
 
@@ -1759,7 +1774,7 @@ class DraggableCanvas(BitmapCanvas):
             # Calculate the amount the view has shifted in pixels
             shift_view = (
                 (self.p_buffer_center[0] - prev_phys_pos[0]) * self.scale,
-                - (self.p_buffer_center[1] - prev_phys_pos[1]) * self.scale,
+                - (self.p_buffer_center[1] - prev_phys_pos[1]) * self.scale * self.xy_ratio,
             )
 
             self.drag_init_pos = (self.drag_init_pos[0] - shift_view[0],

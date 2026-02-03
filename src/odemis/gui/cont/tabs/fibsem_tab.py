@@ -192,6 +192,7 @@ class FibsemTab(Tab):
         self._posture_switch_future = model.InstantaneousFuture()
 
         rx = self.pm.stage.getMetadata()[model.MD_FAV_MILL_POS_ACTIVE]["mill_angle"]
+        panel.pnl_secom_grid.viewports[1].canvas.xy_ratio = math.sin(rx)
         self.panel.ctrl_milling_angle.SetValue(math.degrees(rx))
         # Tilt field is in degrees, so convert from radians to integer degrees to prevent a lot of decimals from showing
         self.panel.ctrl_milling_angle.SetValueRange(*numpy.round(numpy.rad2deg(MILLING_RANGE)).astype(int))
@@ -427,8 +428,13 @@ class FibsemTab(Tab):
         self.panel.ctrl_milling_angle.SetToolTip(f"A milling angle of {math.degrees(milling_angle):.2f}° "
                                                  f"corresponds to a stage tilt of {math.degrees(stage_tilt):.2f}°")
 
-        # if the tab isn't shown, we don't want to perform a move or change features
-        if evt is None:
+        self._on_stage_pos(self.pm.stage.position.value)
+
+        self.panel.pnl_secom_grid.viewports[1].canvas.xy_ratio = math.sin(milling_angle)
+        self.panel.pnl_secom_grid.viewports[1].canvas.request_drawing_update()
+
+        # if the tab isn't shown, we don't want to ask the user
+        if evt is None:  # if the event is None, it means this is the initial update, dont ask the user
             return
 
         logging.debug(f"Updating existing feature positions with the updated milling angle ({math.degrees(milling_angle):.2f}°)")

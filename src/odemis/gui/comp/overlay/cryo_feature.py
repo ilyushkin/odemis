@@ -340,7 +340,7 @@ class CryoFeatureOverlay(StagePointSelectOverlay, DragMixin):
 
             # convert physical position to buffer 'world' coordinates
             bpos = self.cnvs.phys_to_buffer_pos((view_pos["x"], view_pos["y"]),
-                                                self.cnvs.p_buffer_center, self.cnvs.scale,
+                                                self.cnvs.p_buffer_center, (self.cnvs.scale, self.cnvs.scale * 0.17),
                                                 offset=half_size_offset)
 
             def set_icon(feature_icon):
