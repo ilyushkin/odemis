@@ -42,13 +42,14 @@ from odemis.acq.feature import (
 )
 from odemis.acq.milling import millmng
 from odemis.acq.milling.millmng import MillingWorkflowTask, run_automated_milling
+from odemis.acq.milling.fibsemos import run_milling_tasks_fibsemos
 from odemis.acq.milling.patterns import RectanglePatternParameters
 from odemis.acq.milling.tasks import MillingTaskSettings
 from odemis.gui.comp.milling import MillingTaskPanel
 from odemis.gui.comp.overlay.base import Vec
 from odemis.gui.comp.overlay.rectangle import RectangleOverlay
 from odemis.gui.comp.overlay.shapes import EditableShape, ShapesOverlay
-from odemis.gui.conf import get_acqui_conf
+from odemis.gui.conf import get_acqui_conf, get_milling_conf
 from odemis.gui.cont.features import save_project
 from odemis.gui.util import call_in_wx_main, wxlimit_invocation
 from odemis.gui.util.widgets import (
@@ -153,7 +154,15 @@ class MillingTaskController:
         self.canvas = self.viewport.canvas  # fib canvas
 
         self.pm = self._tab_data.main.posture_manager
-        self.conf = get_acqui_conf()
+  
+        self.acqui_conf = get_acqui_conf()
+        self.milling_conf = get_milling_conf()
+
+        # general milling parameters applicable to all the milling tasks
+        general_params = {
+            "rate": self.milling_conf.rate,
+            "dwell_time": self.milling_conf.dwell_time
+        }
 
         # load the milling tasks
         self.milling_tasks: Dict[str, MillingTaskSettings] = {} # TODO: move to main_data
@@ -454,8 +463,7 @@ class MillingTaskController:
 
         # run the milling tasks
         tasks = [task for task_name, task in self.milling_tasks.items() if task_name in self.selected_tasks.value]
-        self._mill_future = millmng.run_milling_tasks(tasks=tasks,
-                                                      fib_stream=self._tab.fib_stream)
+        self._mill_future = run_milling_tasks_fibsemos(tasks=tasks, config_path=self.milling_conf.config_path)
 
         # link the milling gauge to the milling future
         self._gauge_future_conn = ProgressiveFutureConnector(

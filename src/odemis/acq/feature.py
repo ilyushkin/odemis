@@ -174,7 +174,9 @@ class CryoFeature(object):
     def __init__(self, name: str,
                  stage_position: Dict[str, float],
                  fm_focus_position: Dict[str, float],
-                 milling_tasks: Optional[Dict[str, MillingTaskSettings]] = None, correlation_data=None):
+                 milling_tasks: Optional[Dict[str, MillingTaskSettings]] = None,
+                 correlation_data=None,
+                 general_params = {}):
         """
         :param name: (string) the feature name
         :param stage_position: (dict) the stage position of the feature (stage-bare)
@@ -193,7 +195,7 @@ class CryoFeature(object):
             # Find the default milling tasks, starting by looking into the config directory, and then
             # the fallback file in the package.
             try:
-                milling_tasks = load_milling_tasks(USER_MILLING_TASKS_PATH)
+                milling_tasks = load_milling_tasks(USER_MILLING_TASKS_PATH, general_params)
             except Exception as e:
                 if not isinstance(e, FileNotFoundError):
                     logging.warning(f"Error loading milling tasks from user path ({USER_MILLING_TASKS_PATH}): {e}")
