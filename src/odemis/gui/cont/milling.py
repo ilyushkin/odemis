@@ -41,10 +41,10 @@ from odemis.acq.feature import (
     CryoFeature,
 )
 from odemis.acq.milling import millmng
-from odemis.acq.milling.millmng import MillingWorkflowTask, run_automated_milling
+from odemis.acq.milling.millmng import MillingWorkflowTask, get_relevant_task_names, run_automated_milling
 from odemis.acq.milling.patterns import RectanglePatternParameters
 from odemis.acq.milling.tasks import MillingTaskSettings
-from odemis.gui.comp.milling import MillingTaskPanel
+from odemis.gui.comp.milling import MillingTaskPanel, MillingPatternCheckList
 from odemis.gui.comp.overlay.base import Vec
 from odemis.gui.comp.overlay.rectangle import RectangleOverlay
 from odemis.gui.comp.overlay.shapes import EditableShape, ShapesOverlay
@@ -57,8 +57,8 @@ from odemis.gui.util.widgets import (
 )
 from odemis.util import is_point_in_rect, units
 
-# yellow, cyan, magenta, lime, orange, hotpink
-MILLING_COLOURS_CYCLE = ["#FFFF00", "#00FFFF", "#FF00FF", "#00FF00", "#FFA500", "#FF69B4"]
+# yellow, cyan, magenta, lime, orange, hotpink, dodgerblue
+MILLING_COLOURS_CYCLE = ["#FFFF00", "#00FFFF", "#FF00FF", "#00FF00", "#FFA500", "#FF69B4", "#1E90FF"]
 MILLING_COLOURS_CANONICAL = {
     "Rough Milling 01": "#FFFF00",
     "Rough Milling 02": "#00FFFF",
@@ -66,6 +66,7 @@ MILLING_COLOURS_CANONICAL = {
     "Polishing 02": "#00FF00",
     "Microexpansion": "#FFA500",
     "Fiducial": "#FF69B4",
+    "Trench": "#1E90FF",
 }
 
 def _get_milling_colour(task_name: str, idx: int) -> str:
@@ -158,6 +159,22 @@ class MillingTaskController:
         # load the milling tasks
         self.milling_tasks: Dict[str, MillingTaskSettings] = {} # TODO: move to main_data
         self.allow_milling_pattern_move = True
+        # task names the current workflow selection considers relevant
+        # None  = no restriction (all patterns active)
+        # set() = no workflow step checked (all patterns inactive)
+        # {..}  = only the named patterns are active
+        self._relevant_task_names: Optional[set] = None
+
+        # Replace the XRC wxCheckListBox with MillingPatternCheckList, which
+        # supports per-item graying via Enable(False) — reliably on GTK/Linux.
+        _old = self._panel.milling_task_chk_list
+        _parent = _old.GetParent()
+        _sizer = _old.GetContainingSizer()
+        _new = MillingPatternCheckList(_parent)
+        _sizer.Replace(_old, _new)
+        _old.Destroy()
+        _parent.Layout()
+        self._panel.milling_task_chk_list = _new
 
         # pattern overlay
         self.rectangles_overlay = ShapesOverlay(
@@ -231,7 +248,6 @@ class MillingTaskController:
         # Note: always create all the panels, but hide for which the task is not selected.
         # This way, when a task is selected, we can just show the panel without having to create it.
         for task_name, task in self.milling_tasks.items():
-            parameters = task.patterns[0]
             milling = task.milling
 
             # add the panel to the sizer
@@ -245,17 +261,22 @@ class MillingTaskController:
             self.controls[task_name] = {}
             self.controls[task_name]["panel"] = panel
 
-            # pattern parameters
-            for param in pattern_parameters:
-                _va_connector = VigilantAttributeConnector(
-                    getattr(parameters, param),
-                    panel.ctrl_dict[param],
-                    events=wx.EVT_COMMAND_ENTER,
-                )
-                self.controls[task_name][f"{param}_connector"] = _va_connector
-
-                # VA connector, bind events
-                getattr(parameters, param).subscribe(self._on_patterns)
+            # pattern parameters: wire VA connectors dynamically from what the
+            # panel actually registered, keyed as "{pattern_index}_{param}".
+            for i, parameters in enumerate(task.patterns):
+                for ctrl_key, ctrl in panel.ctrl_dict.items():
+                    if not ctrl_key.startswith(f"{i}_"):
+                        continue
+                    param = ctrl_key[len(f"{i}_"):]
+                    if not hasattr(parameters, param):
+                        continue
+                    _va_connector = VigilantAttributeConnector(
+                        getattr(parameters, param),
+                        ctrl,
+                        events=wx.EVT_COMMAND_ENTER,
+                    )
+                    self.controls[task_name][f"{ctrl_key}_connector"] = _va_connector
+                    getattr(parameters, param).subscribe(self._on_patterns)
 
             # milling parameters
             for param in milling_parameters:
@@ -342,14 +363,11 @@ class MillingTaskController:
         self.milling_tasks = milling_tasks
 
         # Update the selected tasks check box list
-
-        all_tasks = []  # names of all the existing tasks
-        selected_tasks = []  # names of the milling task selected (for milling)
-
-        for name, milling_settings in milling_tasks.items():
-            all_tasks.append(name)
-            if milling_settings.selected:
-                selected_tasks.append(name)
+        # All tasks start checked by default; the grey state (eye icon / Enable)
+        # is controlled separately by update_pattern_grey_state.  We never use
+        # task.selected to drive the checkbox — that flag is only for execution.
+        all_tasks = list(milling_tasks.keys())
+        selected_tasks = all_tasks
 
         # unsubscribe from updates to the selected tasks
         self.selected_tasks.unsubscribe(self._on_selected_tasks)
@@ -368,8 +386,9 @@ class MillingTaskController:
         if self._tab_data.main.currentFeature.value is None:
             return
 
+        # Only activate tasks that are both checked by the user and active (not grayed out)
         for task_name, task in self.milling_tasks.items():
-            task.selected = task_name in tasks
+            task.selected = task_name in self._effective_selected_tasks
 
         save_project(self._tab_data.main)
         self.draw_milling_tasks()
@@ -381,8 +400,16 @@ class MillingTaskController:
         :param pos: the position to draw the patterns at (in m, as relative coordinates to the center of the ion-beam FoV)
         """
         for task in self.milling_tasks.values():
+            if not task.patterns:
+                continue
+            # Compute the displacement from the first pattern's current centre to pos,
+            # then apply the same delta to all patterns so relative offsets are preserved.
+            first_center = task.patterns[0].center.value
+            delta_x = pos[0] - first_center[0]
+            delta_y = pos[1] - first_center[1]
             for pattern in task.patterns:
-                pattern.center.value = pos
+                cx, cy = pattern.center.value
+                pattern.center.value = (cx + delta_x, cy + delta_y)
 
         save_project(self._tab_data.main)
         self.draw_milling_tasks()
@@ -409,8 +436,14 @@ class MillingTaskController:
                 continue
             for pattern in task.patterns:
                 # logging.debug(f"{task_name}: {pattern.to_json()}")
-                for j, pshape in enumerate(pattern.generate()):
-                    name = task_name if j == 0 else None
+                generated_shapes = list(pattern.generate())
+                has_multiple_shapes = len(generated_shapes) > 1
+                for pshape in generated_shapes:
+                    if has_multiple_shapes:
+                        # Each sub-shape gets its own label (e.g. "Trench (Top)" / "Trench (Bottom)")
+                        name = pshape.name.value
+                    else:
+                        name = task_name
                     shape = rectangle_pattern_to_shape(
                                             canvas=self.canvas,
                                             ref_img=feature.reference_image,
@@ -423,15 +456,55 @@ class MillingTaskController:
         self._on_shapes_update(self.rectangles_overlay._shapes.value)
 
     def _update_selected_tasks(self, evt: wx.Event):
+        # Grayed items have Enable(False) so they cannot be clicked; no guard needed.
         self.selected_tasks.value = list(self._panel.milling_task_chk_list.GetCheckedStrings())
-        # Update the 'Pattern' panel
+        # Show/hide settings panels for effective (checked + active) tasks only
         for task_name, controls in self.controls.items():
-            panel = controls["panel"]
-            should_show = task_name in self.selected_tasks.value
-            panel.Show(should_show)
+            controls["panel"].Show(task_name in self._effective_selected_tasks)
 
         self._panel.pnl_patterns.Layout()
         self._panel.Layout()
+
+    @property
+    def _effective_selected_tasks(self) -> List[str]:
+        """Checked task names that are also currently active (not grayed out).
+
+        When no workflow restriction is in effect (_relevant_task_names is empty)
+        all checked tasks are considered active.
+        """
+        checked = set(self._panel.milling_task_chk_list.GetCheckedStrings())
+        if self._relevant_task_names is None:
+            return list(checked)
+        return [name for name in checked if name in self._relevant_task_names]
+
+    @call_in_wx_main
+    def update_pattern_grey_state(self, relevant_names: set) -> None:
+        """Gray out PATTERNS items not relevant to the current workflow selection.
+
+        Uses SetItemActive() which calls Enable(False) on the underlying checkbox,
+        reliably graying it out on GTK/Linux.  Checked state is never modified, so
+        the user's per-pattern selection is preserved across workflow changes.
+
+        :param relevant_names: task names that should be active.  Empty set means
+            no restriction (all items active).
+        """
+        self._relevant_task_names = relevant_names
+
+        for i in range(self._panel.milling_task_chk_list.GetCount()):
+            name = self._panel.milling_task_chk_list.GetString(i)
+            is_active = relevant_names is None or name in relevant_names
+            self._panel.milling_task_chk_list.SetItemActive(i, is_active)
+
+        # Refresh task.selected and panel visibility without touching check flags
+        effective = self._effective_selected_tasks
+        for task_name, task in self.milling_tasks.items():
+            task.selected = task_name in effective
+        for task_name, controls in self.controls.items():
+            if "panel" in controls:
+                controls["panel"].Show(task_name in effective)
+        self._panel.pnl_patterns.Layout()
+        self._panel.Layout()
+        self.draw_milling_tasks()
 
     @call_in_wx_main
     def _run_milling(self, evt: wx.Event):
@@ -453,7 +526,7 @@ class MillingTaskController:
         self.allow_milling_pattern_move = False
 
         # run the milling tasks
-        tasks = [task for task_name, task in self.milling_tasks.items() if task_name in self.selected_tasks.value]
+        tasks = [task for task_name, task in self.milling_tasks.items() if task_name in self._effective_selected_tasks]
         self._mill_future = millmng.run_milling_tasks(tasks=tasks,
                                                       fib_stream=self._tab.fib_stream)
 
@@ -503,7 +576,7 @@ class MillingTaskController:
 
         # display the time on the GUI
         txt = "Estimated time: {}.".format(
-            units.readable_time(20 * len(self.selected_tasks.value), full=False)
+            units.readable_time(20 * len(self._effective_selected_tasks), full=False)
         ) #TODO: accurate time estimate
         self._panel.txt_milling_est_time.SetLabel(txt)
         self._panel.txt_automated_milling_est_time.SetLabel(txt)
@@ -536,7 +609,7 @@ class MillingTaskController:
         Enable/disable mill button depending on the state of the GUI
         """
         is_acquiring = self._tab_data.main.is_acquiring.value
-        has_tasks = bool(self.selected_tasks.value)
+        has_tasks = bool(self._effective_selected_tasks)
         valid_patterns = self.valid_patterns.value
         milling_enabled = not is_acquiring and valid_patterns
         self._panel.btn_run_milling.Enable(milling_enabled)
@@ -571,19 +644,31 @@ class AutomatedMillingController:
         self.conf = get_acqui_conf()
 
         # automated milling tasks
-        self.task_list = [MillingWorkflowTask.RoughMilling, MillingWorkflowTask.Polishing]
-        pretty_task_names = ["Rough Milling", "Polishing"]
-        self._panel.workflow_task_chk_list.SetItems([task for task in pretty_task_names])
-        for i in range(self._panel.workflow_task_chk_list.GetCount()):
-            self._panel.workflow_task_chk_list.Check(i)
+        self.task_list = [
+            MillingWorkflowTask.TrenchMilling,
+            MillingWorkflowTask.RoughMillingOnGrid,
+            MillingWorkflowTask.RoughMillingWaffle,
+            MillingWorkflowTask.Polishing,
+        ]
+        pretty_task_names = ["Trench Milling", "Rough Milling - On-Grid", "Rough Milling - Waffle", "Polishing"]
+        # TrenchMilling and RoughMillingWaffle are disabled by default
+        default_checked = {MillingWorkflowTask.RoughMillingOnGrid, MillingWorkflowTask.Polishing}
+        self._panel.workflow_task_chk_list.SetItems(pretty_task_names)
+        for i, task in enumerate(self.task_list):
+            self._panel.workflow_task_chk_list.Check(i, task in default_checked)
 
         self._panel.btn_run_automated_milling.Bind(wx.EVT_BUTTON, self._run_automated_milling)
         self._panel.btn_automated_milling_cancel.Bind(wx.EVT_BUTTON, self._cancel_automated_milling)
+        self._panel.workflow_task_chk_list.Bind(wx.EVT_CHECKLISTBOX, self._on_workflow_task_checked)
 
         # connect features to chklistbox
         self._tab_data.main.features.subscribe(self._update_features, init=True)
         self._panel.workflow_features_chk_list.Bind(wx.EVT_CHECKLISTBOX, self._update_checked_features)
         self._panel.workflow_features_chk_list.Bind(wx.EVT_LISTBOX, self._update_selected_feature)
+
+        # Re-apply grey state whenever the current feature changes (tasks are re-loaded
+        # by MillingTaskController first, so by the time this fires the new task list is ready).
+        self._tab_data.main.currentFeature.subscribe(self._on_current_feature_for_grey_state, init=True)
 
     @call_in_wx_main
     def _update_selected_feature(self, evt: wx.Event):
@@ -594,6 +679,63 @@ class AutomatedMillingController:
         f = self._tab_data.main.features.value[index]
         logging.debug(f"Feature {f.name.value} selected.")
         self._tab_data.main.currentFeature.value = f
+
+    def _on_current_feature_for_grey_state(self, _feature):
+        """Refresh pattern grey state after MillingTaskController has loaded the new feature's tasks.
+
+        MillingTaskController subscribes to currentFeature first (created before
+        AutomatedMillingController), so its set_milling_tasks runs first in the
+        wx event queue.  By the time this subscriber fires, the PATTERNS checklist
+        already contains the new task names.
+
+        :param _feature: unused — the new CryoFeature (or None).
+        """
+        self._refresh_pattern_grey_state()
+
+    def _on_workflow_task_checked(self, evt: wx.Event):
+        """Enforce mutual exclusions between workflow tasks and refresh pattern grey state.
+
+        Trench Milling is a standalone step — selecting it unchecks every other task.
+        RoughMillingOnGrid and RoughMillingWaffle are mutually exclusive with each
+        other and with TrenchMilling (they both need a Ready-to-Mill feature).
+        """
+        idx = evt.GetInt()
+        trench_idx  = self.task_list.index(MillingWorkflowTask.TrenchMilling)
+        on_grid_idx = self.task_list.index(MillingWorkflowTask.RoughMillingOnGrid)
+        waffle_idx  = self.task_list.index(MillingWorkflowTask.RoughMillingWaffle)
+        polish_idx  = self.task_list.index(MillingWorkflowTask.Polishing)
+
+        if idx == trench_idx and self._panel.workflow_task_chk_list.IsChecked(trench_idx):
+            # Trench is a standalone step — uncheck everything else
+            for other in (on_grid_idx, waffle_idx, polish_idx):
+                self._panel.workflow_task_chk_list.Check(other, False)
+        elif idx == on_grid_idx and self._panel.workflow_task_chk_list.IsChecked(on_grid_idx):
+            self._panel.workflow_task_chk_list.Check(waffle_idx, False)
+            self._panel.workflow_task_chk_list.Check(trench_idx, False)
+        elif idx == waffle_idx and self._panel.workflow_task_chk_list.IsChecked(waffle_idx):
+            self._panel.workflow_task_chk_list.Check(on_grid_idx, False)
+
+        self._refresh_pattern_grey_state()
+
+    def _refresh_pattern_grey_state(self) -> None:
+        """Recompute and apply the grey state of the PATTERNS checklist.
+
+        Determines which milling task names are relevant across all currently
+        checked workflow steps and forwards the result to MillingTaskController.
+        """
+        if not hasattr(self._tab, "milling_task_controller"):
+            return
+        mtc = self._tab.milling_task_controller
+        checked_wf_tasks = [t for i, t in enumerate(self.task_list)
+                            if self._panel.workflow_task_chk_list.IsChecked(i)]
+        if not checked_wf_tasks:
+            relevant_names = set()  # nothing checked → no restriction
+        else:
+            all_task_names = list(mtc.milling_tasks.keys())
+            relevant_names = set()
+            for wt in checked_wf_tasks:
+                relevant_names |= get_relevant_task_names(wt, all_task_names)
+        mtc.update_pattern_grey_state(relevant_names)
 
     def _update_checked_features(self, evt: wx.Event):
         index = evt.GetInt()

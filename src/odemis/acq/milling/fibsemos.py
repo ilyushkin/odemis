@@ -31,6 +31,7 @@ from typing import List, Optional, Union
 
 from odemis import model
 from odemis.acq.milling.patterns import (
+    AsymmetricTrenchPatternParameters,
     MicroexpansionPatternParameters,
     MillingPatternParameters,
     RectanglePatternParameters,
@@ -198,6 +199,9 @@ def convert_pattern_to_fibsemos(p: MillingPatternParameters) -> 'BasePattern':
     elif isinstance(p, TrenchPatternParameters):
         return _convert_trench_pattern(p)
 
+    elif isinstance(p, AsymmetricTrenchPatternParameters):
+        return _convert_asymmetric_trench_pattern(p)
+
     elif isinstance(p, MicroexpansionPatternParameters):
         return _convert_microexpansion_pattern(p)
     else:
@@ -220,6 +224,21 @@ def _convert_trench_pattern(p: TrenchPatternParameters) -> 'TrenchPattern':
         width=p.width.value,
         upper_trench_height=p.height.value,
         lower_trench_height=p.height.value,
+        spacing=p.spacing.value,
+        depth=p.depth.value,
+        point=Point(x=p.center.value[0], y=p.center.value[1])
+    )
+
+def _convert_asymmetric_trench_pattern(p: AsymmetricTrenchPatternParameters) -> 'TrenchPattern':
+    """Convert an asymmetric trench pattern to a fibsemOS TrenchPattern.
+
+    fibsemOS TrenchPattern has a single width field, so the top width is used
+    as the primary width passed to the hardware.
+    """
+    return TrenchPattern(
+        width=p.width_top.value,
+        upper_trench_height=p.height_top.value,
+        lower_trench_height=p.height_bottom.value,
         spacing=p.spacing.value,
         depth=p.depth.value,
         point=Point(x=p.center.value[0], y=p.center.value[1])

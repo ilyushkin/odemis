@@ -32,6 +32,7 @@ from odemis.acq.feature import (
     FEATURE_POLISHED,
     FEATURE_READY_TO_MILL,
     FEATURE_ROUGH_MILLED,
+    FEATURE_TRENCH_MILLED,
     CryoFeature,
     get_feature_position_at_posture,
     FIBFMCorrelationData,
@@ -90,6 +91,7 @@ class CryoFeatureController(object):
         # values for feature status combobox
         self._panel.cmb_feature_status.Append(FEATURE_ACTIVE)
         self._panel.cmb_feature_status.Append(FEATURE_READY_TO_MILL)
+        self._panel.cmb_feature_status.Append(FEATURE_TRENCH_MILLED)
         self._panel.cmb_feature_status.Append(FEATURE_ROUGH_MILLED)
         self._panel.cmb_feature_status.Append(FEATURE_POLISHED)
         self._panel.cmb_feature_status.Append(FEATURE_DEACTIVE)
@@ -222,12 +224,29 @@ class CryoFeatureController(object):
             logging.warning(f"No FIB image available to save for {feature.name.value}")
             return
 
+        ref_image = stream.raw[0]
+
+        # Preserve the milling stage position that was set when the feature was
+        # created (click position).  Only fall back to the current stage position
+        # when no milling position has been recorded yet (first Save Position).
+        existing_milling_pos = feature.get_posture_position(MILLING)
+        milling_stage_pos = existing_milling_pos if existing_milling_pos is not None else self.pm.stage.position.value
+
         # save the milling data (tasks, reference image)
         feature.save_milling_task_data(
-                                stage_position=self.pm.stage.position.value,
-                                # milling_tasks=milling_tasks,
+                                stage_position=milling_stage_pos,
                                 path=os.path.join(self._tab.conf.pj_last_path, feature.name.value),
-                                reference_image=stream.raw[0])
+                                reference_image=ref_image)
+
+        # Move the milling patterns so they are centred on the feature's milling
+        # position within the newly acquired reference image.
+        if hasattr(self._tab, "milling_task_controller"):
+            from odemis.gui.cont.milling import pos_to_relative
+            rel_pos = pos_to_relative(
+                (milling_stage_pos["x"], milling_stage_pos["y"]),
+                ref_image,
+            )
+            self._tab.milling_task_controller.move_milling_tasks(rel_pos)
 
         save_project(self._tab_data_model.main)
 

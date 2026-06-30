@@ -99,7 +99,7 @@ class TestAutomatedMillingManager(unittest.TestCase):
         cls.stage_loading = stage_md[model.MD_FAV_POS_DEACTIVE]
 
         cls.task_list = [
-            MillingWorkflowTask.RoughMilling,
+            MillingWorkflowTask.RoughMillingOnGrid,
             MillingWorkflowTask.Polishing,
         ]
 

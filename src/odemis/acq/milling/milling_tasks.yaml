@@ -6,6 +6,25 @@
 # task_name:
 #  milling: Milling parameters
 #  patterns: List of patterns (and parameters) to mill
+'Trench':
+  name: 'Trench'
+  milling:
+    current: 2.5e-9
+    voltage: 30000.0
+    field_of_view: 8e-05
+    mode: 'Serial'
+    channel: 'ion'
+  patterns:
+    - name: 'Trench'
+      width_top: 22.0e-6
+      height_top: 37.0e-6
+      width_bottom: 20.0e-6
+      height_bottom: 17.0e-6
+      depth: 1.0e-6
+      spacing: 25.0e-6
+      center_x: 0
+      center_y: 0
+      pattern: 'asymmetric_trench'
 'Microexpansion':
   name: 'Microexpansion'
   milling:
@@ -91,3 +110,4 @@
       center_x: 0
       center_y: 0
       pattern: 'trench'
+

@@ -241,9 +241,105 @@ class MicroexpansionPatternParameters(MillingPatternParameters):
 
         return patterns
 
+
+class AsymmetricTrenchPatternParameters(MillingPatternParameters):
+    """Represents a trench pattern with independently sized top and bottom boxes.
+
+    The center attribute is the midpoint of the gap between the two boxes,
+    which is used as the anchor point for moving the pattern.
+
+    :param width_top: width of the top box in metres.
+    :param height_top: height of the top box in metres.
+    :param width_bottom: width of the bottom box in metres.
+    :param height_bottom: height of the bottom box in metres.
+    :param depth: milling depth in metres (shared by both boxes).
+    :param spacing: gap between the inner edges of the two boxes in metres.
+    :param center: (x, y) position of the gap midpoint in metres.
+    :param name: human-readable pattern name.
+    """
+
+    def __init__(self, width_top: float, height_top: float,
+                 width_bottom: float, height_bottom: float,
+                 depth: float, spacing: float,
+                 center=(0, 0), name: str = "Trench"):
+        self.name = model.StringVA(name)
+        self.width_top = model.FloatContinuous(width_top, unit="m", range=(1e-9, 900e-6))
+        self.height_top = model.FloatContinuous(height_top, unit="m", range=(1e-9, 900e-6))
+        self.width_bottom = model.FloatContinuous(width_bottom, unit="m", range=(1e-9, 900e-6))
+        self.height_bottom = model.FloatContinuous(height_bottom, unit="m", range=(1e-9, 900e-6))
+        self.depth = model.FloatContinuous(depth, unit="m", range=(1e-9, 100e-6))
+        self.spacing = model.FloatContinuous(spacing, unit="m", range=(0, 900e-6))
+        self.center = model.TupleContinuous(center, unit="m", range=((-1e3, -1e3), (1e3, 1e3)), cls=(int, float))
+
+    def to_dict(self) -> dict:
+        """Convert the parameters to a dictionary."""
+        return {
+            "name": self.name.value,
+            "width_top": self.width_top.value,
+            "height_top": self.height_top.value,
+            "width_bottom": self.width_bottom.value,
+            "height_bottom": self.height_bottom.value,
+            "depth": self.depth.value,
+            "spacing": self.spacing.value,
+            "center_x": self.center.value[0],
+            "center_y": self.center.value[1],
+            "pattern": "asymmetric_trench",
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> 'AsymmetricTrenchPatternParameters':
+        """Create an AsymmetricTrenchPatternParameters object from a dictionary.
+
+        :param data: dictionary containing the pattern parameters.
+        :return: AsymmetricTrenchPatternParameters instance.
+        """
+        return AsymmetricTrenchPatternParameters(
+            width_top=data["width_top"],
+            height_top=data["height_top"],
+            width_bottom=data["width_bottom"],
+            height_bottom=data["height_bottom"],
+            depth=data["depth"],
+            spacing=data["spacing"],
+            center=(data.get("center_x", 0), data.get("center_y", 0)),
+            name=data.get("name", "Trench"),
+        )
+
+    def __repr__(self) -> str:
+        return f"{self.to_dict()}"
+
+    def generate(self) -> List[MillingPatternParameters]:
+        """Generate the two rectangle shapes (Top and Bottom) from this pattern.
+
+        The top box is centred above the gap midpoint, the bottom box below it.
+        Both boxes are horizontally centred on center_x.
+        """
+        cx, cy = self.center.value
+        upper_cy = cy + self.spacing.value / 2 + self.height_top.value / 2
+        lower_cy = cy - self.spacing.value / 2 - self.height_bottom.value / 2
+        return [
+            RectanglePatternParameters(
+                name=f"{self.name.value} (Top)",
+                width=self.width_top.value,
+                height=self.height_top.value,
+                depth=self.depth.value,
+                center=(cx, upper_cy),
+                scan_direction="TopToBottom",
+            ),
+            RectanglePatternParameters(
+                name=f"{self.name.value} (Bottom)",
+                width=self.width_bottom.value,
+                height=self.height_bottom.value,
+                depth=self.depth.value,
+                center=(cx, lower_cy),
+                scan_direction="BottomToTop",
+            ),
+        ]
+
+
 # dictionary to map pattern names to pattern classes
 PATTERN_NAME_TO_CLASS = {
     "rectangle": RectanglePatternParameters,
     "trench": TrenchPatternParameters,
     "microexpansion": MicroexpansionPatternParameters,
+    "asymmetric_trench": AsymmetricTrenchPatternParameters,
 }

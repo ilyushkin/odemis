@@ -42,6 +42,7 @@ from odemis.acq.feature import (
     FEATURE_DEACTIVE,
     FEATURE_POLISHED,
     FEATURE_ROUGH_MILLED,
+    FEATURE_TRENCH_MILLED,
     FEATURE_ACTIVE,
     FEATURE_READY_TO_MILL,
     CryoFeature,
@@ -268,13 +269,27 @@ def run_milling_tasks(tasks: List[MillingTaskSettings], fib_stream: FIBStream, f
     return future
 
 class MillingWorkflowTask(Enum):
-    RoughMilling = "Rough Milling"
+    TrenchMilling = "Trench Milling"
+    RoughMillingOnGrid = "Rough Milling - On-Grid"
+    RoughMillingWaffle = "Rough Milling - Waffle"
     Polishing = "Polishing"
 
 status_map: Dict[MillingWorkflowTask, str] = {
-    MillingWorkflowTask.RoughMilling: FEATURE_ROUGH_MILLED,
+    MillingWorkflowTask.TrenchMilling: FEATURE_TRENCH_MILLED,
+    MillingWorkflowTask.RoughMillingOnGrid: FEATURE_ROUGH_MILLED,
+    MillingWorkflowTask.RoughMillingWaffle: FEATURE_ROUGH_MILLED,
     MillingWorkflowTask.Polishing: FEATURE_POLISHED,
 }
+
+# Maps each workflow task to the feature status that a feature must have to be processed.
+# Features not matching this status are silently skipped.
+required_input_status: Dict[MillingWorkflowTask, str] = {
+    MillingWorkflowTask.TrenchMilling: FEATURE_READY_TO_MILL,
+    MillingWorkflowTask.RoughMillingOnGrid: FEATURE_READY_TO_MILL,
+    MillingWorkflowTask.RoughMillingWaffle: FEATURE_TRENCH_MILLED,
+    MillingWorkflowTask.Polishing: FEATURE_ROUGH_MILLED,
+}
+
 def get_associated_tasks(wt: MillingWorkflowTask,
                          milling_tasks: Dict[str, MillingTaskSettings]) -> List[MillingTaskSettings]:
     """Get the milling tasks associated with the given workflow task.
@@ -286,14 +301,46 @@ def get_associated_tasks(wt: MillingWorkflowTask,
         if not task.selected:
             continue
 
+        if wt is MillingWorkflowTask.TrenchMilling:
+            if task.name == "Trench":
+                associated_tasks.append(task)
+            continue
+
+        if wt in (MillingWorkflowTask.RoughMillingOnGrid, MillingWorkflowTask.RoughMillingWaffle):
+            if "Rough Milling" in task.name:
+                associated_tasks.append(task)
+            # Microexpansion always runs first for both rough-milling flavours
+            if "Microexpansion" in task.name:
+                associated_tasks.insert(0, task)
+            continue
+
         if wt.value in task.name:
             associated_tasks.append(task)
 
-        # special case for micro-expansion to associate with rough milling
-        if wt is MillingWorkflowTask.RoughMilling and "Microexpansion" in task.name:
-            associated_tasks.insert(0, task) # should be the first task
-
     return associated_tasks
+
+
+def get_relevant_task_names(wt: MillingWorkflowTask, all_task_names) -> set:
+    """Get the set of milling task names relevant to a workflow task, ignoring selection state.
+
+    Used purely for GUI highlighting — does not modify any task state.
+
+    :param wt: The workflow task.
+    :param all_task_names: Iterable of all available task names.
+    :return: Set of task names relevant to the workflow task.
+    """
+    result = set()
+    for name in all_task_names:
+        if wt is MillingWorkflowTask.TrenchMilling:
+            if name == "Trench":
+                result.add(name)
+        elif wt in (MillingWorkflowTask.RoughMillingOnGrid, MillingWorkflowTask.RoughMillingWaffle):
+            if "Rough Milling" in name or "Microexpansion" in name:
+                result.add(name)
+        elif wt is MillingWorkflowTask.Polishing:
+            if "Polishing" in name:
+                result.add(name)
+    return result
 
 class AutomatedMillingManager(object):
 
@@ -360,14 +407,11 @@ class AutomatedMillingManager(object):
                 elif feature.status.value == FEATURE_ACTIVE:
                     logging.info(f"Skipping {feature.name.value} as it is not ready for milling.")
                     continue
-                elif status_map[workflow_task] == feature.status.value == FEATURE_ROUGH_MILLED:
-                    logging.info(f"Skipping {feature.name.value} as it was already rough milled.")
-                    continue
-                elif status_map[workflow_task] == feature.status.value == FEATURE_POLISHED:
-                    logging.info(f"Skipping {feature.name.value} as it was already polished.")
-                    continue
-                elif workflow_task == MillingWorkflowTask.RoughMilling and feature.status.value == FEATURE_POLISHED:
-                    logging.info(f"Skipping {feature.name.value} as it was already rough milled and polished.")
+                elif feature.status.value != required_input_status[workflow_task]:
+                    logging.info(
+                        f"Skipping {feature.name.value}: status={feature.status.value!r}, "
+                        f"required={required_input_status[workflow_task]!r}."
+                    )
                     continue
 
                 # get milling tasks
