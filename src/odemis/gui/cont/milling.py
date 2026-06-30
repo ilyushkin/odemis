@@ -362,12 +362,13 @@ class MillingTaskController:
 
         self.milling_tasks = milling_tasks
 
-        # Update the selected tasks check box list
-        # All tasks start checked by default; the grey state (eye icon / Enable)
-        # is controlled separately by update_pattern_grey_state.  We never use
-        # task.selected to drive the checkbox — that flag is only for execution.
+        # Update the selected tasks check box list.
+        # Restore the user's per-feature checkbox state from task.selected.
+        # For a brand-new feature all tasks have selected=True so all start checked.
+        # The grey state (eye icon / Enable) is controlled separately by
+        # update_pattern_grey_state and does NOT change task.selected.
         all_tasks = list(milling_tasks.keys())
-        selected_tasks = all_tasks
+        selected_tasks = [name for name, task in milling_tasks.items() if task.selected]
 
         # unsubscribe from updates to the selected tasks
         self.selected_tasks.unsubscribe(self._on_selected_tasks)
@@ -386,9 +387,12 @@ class MillingTaskController:
         if self._tab_data.main.currentFeature.value is None:
             return
 
-        # Only activate tasks that are both checked by the user and active (not grayed out)
+        # Persist the user's full checkbox intent for this feature, including
+        # tasks that are currently grayed out (they are checked but disabled).
+        # Running uses _effective_selected_tasks to exclude grayed tasks.
+        tasks_set = set(tasks)
         for task_name, task in self.milling_tasks.items():
-            task.selected = task_name in self._effective_selected_tasks
+            task.selected = task_name in tasks_set
 
         save_project(self._tab_data.main)
         self.draw_milling_tasks()
@@ -424,15 +428,15 @@ class MillingTaskController:
 
         # then, redraws all the patterns.
         feature = self._tab_data.main.currentFeature.value
-        selected_tasks = self.selected_tasks.value
+        effective = set(self._effective_selected_tasks)
         # The patterns are defined relative to the center of the reference image
-        if not self.milling_tasks or not selected_tasks or not feature or feature.reference_image is None:
+        if not self.milling_tasks or not effective or not feature or feature.reference_image is None:
             self.canvas.request_drawing_update()
             return
 
         # redraw all patterns
         for i, (task_name, task) in enumerate(self.milling_tasks.items()):
-            if not task.selected:
+            if task_name not in effective:
                 continue
             for pattern in task.patterns:
                 # logging.debug(f"{task_name}: {pattern.to_json()}")
@@ -495,10 +499,10 @@ class MillingTaskController:
             is_active = relevant_names is None or name in relevant_names
             self._panel.milling_task_chk_list.SetItemActive(i, is_active)
 
-        # Refresh task.selected and panel visibility without touching check flags
-        effective = self._effective_selected_tasks
-        for task_name, task in self.milling_tasks.items():
-            task.selected = task_name in effective
+        # Update panel visibility based on effective selection (checked AND active).
+        # task.selected is intentionally NOT modified here, it is the user's
+        # per-feature checkbox preference, managed solely by _on_selected_tasks.
+        effective = set(self._effective_selected_tasks)
         for task_name, controls in self.controls.items():
             if "panel" in controls:
                 controls["panel"].Show(task_name in effective)
@@ -714,6 +718,9 @@ class AutomatedMillingController:
             self._panel.workflow_task_chk_list.Check(trench_idx, False)
         elif idx == waffle_idx and self._panel.workflow_task_chk_list.IsChecked(waffle_idx):
             self._panel.workflow_task_chk_list.Check(on_grid_idx, False)
+            self._panel.workflow_task_chk_list.Check(trench_idx, False)
+        elif idx == polish_idx and self._panel.workflow_task_chk_list.IsChecked(polish_idx):
+            self._panel.workflow_task_chk_list.Check(trench_idx, False)
 
         self._refresh_pattern_grey_state()
 

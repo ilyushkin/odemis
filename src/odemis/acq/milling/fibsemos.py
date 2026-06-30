@@ -31,7 +31,6 @@ from typing import List, Optional, Union
 
 from odemis import model
 from odemis.acq.milling.patterns import (
-    AsymmetricTrenchPatternParameters,
     MicroexpansionPatternParameters,
     MillingPatternParameters,
     RectanglePatternParameters,
@@ -199,9 +198,6 @@ def convert_pattern_to_fibsemos(p: MillingPatternParameters) -> 'BasePattern':
     elif isinstance(p, TrenchPatternParameters):
         return _convert_trench_pattern(p)
 
-    elif isinstance(p, AsymmetricTrenchPatternParameters):
-        return _convert_asymmetric_trench_pattern(p)
-
     elif isinstance(p, MicroexpansionPatternParameters):
         return _convert_microexpansion_pattern(p)
     else:
@@ -224,21 +220,6 @@ def _convert_trench_pattern(p: TrenchPatternParameters) -> 'TrenchPattern':
         width=p.width.value,
         upper_trench_height=p.height.value,
         lower_trench_height=p.height.value,
-        spacing=p.spacing.value,
-        depth=p.depth.value,
-        point=Point(x=p.center.value[0], y=p.center.value[1])
-    )
-
-def _convert_asymmetric_trench_pattern(p: AsymmetricTrenchPatternParameters) -> 'TrenchPattern':
-    """Convert an asymmetric trench pattern to a fibsemOS TrenchPattern.
-
-    fibsemOS TrenchPattern has a single width field, so the top width is used
-    as the primary width passed to the hardware.
-    """
-    return TrenchPattern(
-        width=p.width_top.value,
-        upper_trench_height=p.height_top.value,
-        lower_trench_height=p.height_bottom.value,
         spacing=p.spacing.value,
         depth=p.depth.value,
         point=Point(x=p.center.value[0], y=p.center.value[1])
@@ -318,28 +299,56 @@ def convert_milling_settings(s: MillingSettings) -> 'FibsemMillingSettings':
     )
 
 # task converter
-def convert_task_to_milling_stage(task: MillingTaskSettings) -> 'FibsemMillingStage':
-    """Convert a single Odemis milling task to a fibsemOS milling stage."""
-    s = convert_milling_settings(task.milling)
-    p = convert_pattern_to_fibsemos(task.patterns[0])
-    a = MillingAlignment(enabled=task.milling.align.value)
+def convert_task_to_milling_stage(task: MillingTaskSettings) -> List['FibsemMillingStage']:
+    """Convert a single Odemis milling task to one or more fibsemOS milling stages.
 
-    milling_stage = FibsemMillingStage(
-        name=task.name,
-        milling=s,
-        pattern=p,
-        alignment=a,
-    )
-    return milling_stage
+    Patterns that have a native fibsemOS equivalent (Rectangle, Trench,
+    MicroExpansion) are forwarded directly.  Any pattern whose type is not
+    natively supported raises NotImplementedError in convert_pattern_to_fibsemos.
+    In that case the pattern is expanded via generate() and each sub-shape is
+    converted individually through the same dispatch.  Sub-shapes may be any
+    natively supported primitive type (rectangle, circle, ...).
+
+    This means that future compound patterns require only a correct generate()
+    implementation and, if a new primitive type is introduced, a corresponding
+    entry in convert_pattern_to_fibsemos no further changes here.
+
+    :param task: the milling task to convert.
+    :return: list of fibsemOS milling stages (one or more).
+    """
+    s = convert_milling_settings(task.milling)
+    a = MillingAlignment(enabled=task.milling.align.value)
+    stages = []
+
+    for pattern in task.patterns:
+        try:
+            # Use native fibsemOS pattern type where available
+            stages.append(FibsemMillingStage(
+                name=task.name,
+                milling=s,
+                pattern=convert_pattern_to_fibsemos(pattern),
+                alignment=a,
+            ))
+        except NotImplementedError:
+            # If no native equivalent then expand into constituent sub-shapes and
+            # convert each one individually. Sub-shapes may be any natively
+            # supported type (rectangle, circle, ...). If a sub-shape is itself
+            # unsupported, NotImplementedError propagates up to the caller.
+            for sub_shape in pattern.generate():
+                stages.append(FibsemMillingStage(
+                    name=f"{task.name} - {sub_shape.name.value}",
+                    milling=s,
+                    pattern=convert_pattern_to_fibsemos(sub_shape),
+                    alignment=a,
+                ))
+
+    return stages
 
 def convert_milling_tasks_to_milling_stages(milling_tasks: List[MillingTaskSettings]) -> List['FibsemMillingStage']:
     """Convert a list of Odemis milling tasks to fibsemOS milling stages."""
     milling_stages = []
-
     for task in milling_tasks:
-        milling_stage = convert_task_to_milling_stage(task)
-        milling_stages.append(milling_stage)
-
+        milling_stages.extend(convert_task_to_milling_stage(task))
     return milling_stages
 
 class FibsemOSMillingTaskManager:

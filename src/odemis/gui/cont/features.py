@@ -238,16 +238,6 @@ class CryoFeatureController(object):
                                 path=os.path.join(self._tab.conf.pj_last_path, feature.name.value),
                                 reference_image=ref_image)
 
-        # Move the milling patterns so they are centred on the feature's milling
-        # position within the newly acquired reference image.
-        if hasattr(self._tab, "milling_task_controller"):
-            from odemis.gui.cont.milling import pos_to_relative
-            rel_pos = pos_to_relative(
-                (milling_stage_pos["x"], milling_stage_pos["y"]),
-                ref_image,
-            )
-            self._tab.milling_task_controller.move_milling_tasks(rel_pos)
-
         save_project(self._tab_data_model.main)
 
         # refresh current feature to update reference image and milling tasks
