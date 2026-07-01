@@ -165,8 +165,7 @@ class MillingTaskController:
         # {..}  = only the named patterns are active
         self._relevant_task_names: Optional[set] = None
 
-        # Replace the XRC wxCheckListBox with MillingPatternCheckList, which
-        # supports per-item graying via Enable(False) — reliably on GTK/Linux.
+        # Use MillingPatternCheckList, which supports per-item graying via Enable(False).
         _old = self._panel.milling_task_chk_list
         _parent = _old.GetParent()
         _sizer = _old.GetContainingSizer()
@@ -709,16 +708,16 @@ class AutomatedMillingController:
         wx event queue.  By the time this subscriber fires, the PATTERNS checklist
         already contains the new task names.
 
-        :param _feature: unused — the new CryoFeature (or None).
+        :param _feature: unused, the new CryoFeature (or None).
         """
         self._refresh_pattern_grey_state()
 
     def _on_workflow_task_checked(self, evt: wx.Event):
         """Enforce mutual exclusions between workflow tasks and refresh pattern grey state.
 
-        Trench Milling is a standalone step — selecting it unchecks every other task.
+        Trench Milling is a standalone step. Selecting it unchecks every other task.
         RoughMillingOnGrid and RoughMillingWaffle are mutually exclusive with each
-        other and with TrenchMilling (they both need a Ready-to-Mill feature).
+        other and with TrenchMilling (they both need a "Ready to Mill" feature).
         """
         idx = evt.GetInt()
         trench_idx  = self.task_list.index(MillingWorkflowTask.TrenchMilling)
@@ -727,7 +726,7 @@ class AutomatedMillingController:
         polish_idx  = self.task_list.index(MillingWorkflowTask.Polishing)
 
         if idx == trench_idx and self._panel.workflow_task_chk_list.IsChecked(trench_idx):
-            # Trench is a standalone step — uncheck everything else
+            # Trench is a standalone step, uncheck everything else
             for other in (on_grid_idx, waffle_idx, polish_idx):
                 self._panel.workflow_task_chk_list.Check(other, False)
         elif idx == on_grid_idx and self._panel.workflow_task_chk_list.IsChecked(on_grid_idx):
@@ -753,7 +752,7 @@ class AutomatedMillingController:
         checked_wf_tasks = [t for i, t in enumerate(self.task_list)
                             if self._panel.workflow_task_chk_list.IsChecked(i)]
         if not checked_wf_tasks:
-            relevant_names = set()  # nothing checked → no restriction
+            relevant_names = set()  # nothing checked means no restriction
         else:
             all_task_names = list(mtc.milling_tasks.keys())
             relevant_names = set()

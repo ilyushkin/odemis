@@ -323,7 +323,7 @@ def get_associated_tasks(wt: MillingWorkflowTask,
 def get_relevant_task_names(wt: MillingWorkflowTask, all_task_names) -> set:
     """Get the set of milling task names relevant to a workflow task, ignoring selection state.
 
-    Used purely for GUI highlighting — does not modify any task state.
+    Used purely for GUI highlighting, does not modify any task state.
 
     :param wt: The workflow task.
     :param all_task_names: Iterable of all available task names.

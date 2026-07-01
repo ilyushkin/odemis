@@ -49,7 +49,7 @@ class MillingPatternCheckList(wx.Panel):
     - Checked state never changes unless the user explicitly clicks the checkbox.
 
     The parent sidebar is already inside a wxScrolledWindow, so this widget
-    is a plain wx.Panel — its GridBagSizer reports a proper natural size to the
+    is a plain wx.Panel, its GridBagSizer reports a proper natural size to the
     FoldPanelItem so the fold panel expands correctly.
     """
 
@@ -124,7 +124,7 @@ class MillingPatternCheckList(wx.Panel):
         self._items = []
 
         for row, name in enumerate(items):
-            # Eye indicator (col 0) — read-only, shows active/inactive state
+            # Eye indicator (col 0) is read-only, shows active/inactive state
             eye_bmp = wx.StaticBitmap(self, bitmap=img.getBitmap("icon/ico_eye_open.png"))
             eye_bmp.SetToolTip("Indicates whether this pattern is active for the selected workflow step")
 
@@ -208,7 +208,7 @@ class MillingPatternCheckList(wx.Panel):
         """Activate or gray out an item without changing its checked state.
 
         Swaps the eye bitmap to open/closed, enables/disables the checkbox,
-        and dims the label.  The eye indicator is not clickable — it only
+        and dims the label. The eye indicator is not clickable as it only
         reflects the state driven by the current workflow selection.
 
         :param idx: item index.

@@ -27,15 +27,18 @@ import threading
 import time
 from concurrent import futures
 from concurrent.futures._base import CANCELLED, FINISHED, RUNNING, CancelledError
-from typing import List, Optional, Union
+from dataclasses import dataclass
+from typing import ClassVar, List, Optional, Union
 
 from odemis import model
 from odemis.acq.milling.patterns import (
+    AsymmetricTrenchPatternParameters,
     MicroexpansionPatternParameters,
     MillingPatternParameters,
     RectanglePatternParameters,
     TrenchPatternParameters,
 )
+
 from odemis.acq.milling.tasks import (
     MillingSettings,
     MillingTaskSettings,
@@ -64,6 +67,7 @@ try:
     )
     from fibsem.structures import (
         FibsemMillingSettings,
+        FibsemRectangleSettings,
         Point,
         FibsemImage,
         FibsemImageMetadata,
@@ -73,6 +77,52 @@ try:
         MicroscopeState,
     )
     from fibsem.utils import load_microscope_configuration
+
+    @dataclass
+    class _AsymmetricTrenchPattern(BasePattern[FibsemRectangleSettings]):
+        """fibsemOS pattern for an asymmetric trench with independent top and bottom rectangles.
+
+        Both sub-rectangles are placed in a single DrawBeam layer so that
+        DrawBeam.Start() is called only once, avoiding the Visibility (-4) error
+        that occurs when two separate milling stages are used.
+
+        The coordinate conventions match AsymmetricTrenchPatternParameters.generate():
+        the top rectangle is centred above the gap midpoint, the bottom below it.
+        """
+
+        name: ClassVar[str] = "AsymmetricTrench"
+        width_top: float = 10.0e-6
+        height_top: float = 5.0e-6
+        width_bottom: float = 10.0e-6
+        height_bottom: float = 5.0e-6
+        depth: float = 1.0e-6
+        spacing: float = 5.0e-6
+
+        def define(self) -> List[FibsemRectangleSettings]:
+            """Return the two FibsemRectangleSettings that make up the asymmetric trench."""
+            cx = self.point.x
+            cy = self.point.y
+            upper_cy = cy + self.spacing / 2 + self.height_top / 2
+            lower_cy = cy - self.spacing / 2 - self.height_bottom / 2
+            upper = FibsemRectangleSettings(
+                width=self.width_top,
+                height=self.height_top,
+                depth=self.depth,
+                centre_x=cx,
+                centre_y=upper_cy,
+                scan_direction="TopToBottom",
+            )
+            lower = FibsemRectangleSettings(
+                width=self.width_bottom,
+                height=self.height_bottom,
+                depth=self.depth,
+                centre_x=cx,
+                centre_y=lower_cy,
+                scan_direction="BottomToTop",
+            )
+            self.shapes = [upper, lower]
+            return self.shapes
+
     FIBSEMOS_INSTALLED = True
 except ImportError as e:
     logging.warning(f"fibsemOS is not installed or not available: {e}")
@@ -198,6 +248,9 @@ def convert_pattern_to_fibsemos(p: MillingPatternParameters) -> 'BasePattern':
     elif isinstance(p, TrenchPatternParameters):
         return _convert_trench_pattern(p)
 
+    elif isinstance(p, AsymmetricTrenchPatternParameters):
+        return _convert_asymmetric_trench_pattern(p)
+
     elif isinstance(p, MicroexpansionPatternParameters):
         return _convert_microexpansion_pattern(p)
     else:
@@ -223,6 +276,23 @@ def _convert_trench_pattern(p: TrenchPatternParameters) -> 'TrenchPattern':
         spacing=p.spacing.value,
         depth=p.depth.value,
         point=Point(x=p.center.value[0], y=p.center.value[1])
+    )
+
+def _convert_asymmetric_trench_pattern(p: AsymmetricTrenchPatternParameters) -> '_AsymmetricTrenchPattern':
+    """Convert an Odemis asymmetric trench pattern to a fibsemOS pattern.
+
+    Returns a single _AsymmetricTrenchPattern whose define() method yields two
+    FibsemRectangleSettings in one DrawBeam layer, so DrawBeam.Start() is
+    called only once and the Visibility (-4) error is avoided.
+    """
+    return _AsymmetricTrenchPattern(
+        width_top=p.width_top.value,
+        height_top=p.height_top.value,
+        width_bottom=p.width_bottom.value,
+        height_bottom=p.height_bottom.value,
+        depth=p.depth.value,
+        spacing=p.spacing.value,
+        point=Point(x=p.center.value[0], y=p.center.value[1]),
     )
 
 def _convert_microexpansion_pattern(p: MicroexpansionPatternParameters) -> 'MicroExpansionPattern':
@@ -322,7 +392,11 @@ def convert_task_to_milling_stage(task: MillingTaskSettings) -> List['FibsemMill
 
     for pattern in task.patterns:
         try:
-            # Use native fibsemOS pattern type where available
+            # Use native fibsemOS pattern type where available.
+            # This keeps compound patterns (e.g. TrenchPattern) in a single
+            # milling stage / DrawBeam layer so DrawBeam.Start() is called
+            # only once for the whole pattern, avoiding visibility errors that
+            # arise when sub-shapes are milled in separate layers.
             stages.append(FibsemMillingStage(
                 name=task.name,
                 milling=s,
@@ -330,10 +404,9 @@ def convert_task_to_milling_stage(task: MillingTaskSettings) -> List['FibsemMill
                 alignment=a,
             ))
         except NotImplementedError:
-            # If no native equivalent then expand into constituent sub-shapes and
-            # convert each one individually. Sub-shapes may be any natively
-            # supported type (rectangle, circle, ...). If a sub-shape is itself
-            # unsupported, NotImplementedError propagates up to the caller.
+            # No native fibsemOS equivalent — expand into rectangle sub-shapes
+            # using Odemis coordinates and convert each one individually.
+            # Sub-shapes from generate() are always RectanglePatternParameters.
             for sub_shape in pattern.generate():
                 stages.append(FibsemMillingStage(
                     name=f"{task.name} - {sub_shape.name.value}",
