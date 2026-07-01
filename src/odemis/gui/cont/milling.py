@@ -224,6 +224,11 @@ class MillingTaskController:
         self.set_milling_tasks(milling_tasks)
         self._update_pattern_panels()
 
+        if hasattr(self._tab, "automated_milling_controller"):
+            self._tab.automated_milling_controller._refresh_pattern_grey_state()
+        else:
+            self.draw_milling_tasks()
+
     @call_in_wx_main
     def _update_pattern_panels(self) -> None:
         """
@@ -296,7 +301,7 @@ class MillingTaskController:
                 # VA connector, bind events
                 getattr(milling, param).subscribe(self._on_patterns)
 
-            if not task.selected:
+            if task_name not in self._effective_selected_tasks:
                 panel.Hide()
 
         self._panel.pnl_patterns.Layout()
@@ -306,6 +311,10 @@ class MillingTaskController:
         # keeps the previous virtual size until the user triggers a resize
         self._panel.scr_win_right.FitInside()
         self._panel.scr_win_right.SendSizeEvent()
+
+        # Re-apply workflow-based graying after the PATTERNS list and panels
+        # have been rebuilt for the newly selected feature.
+        self._request_workflow_pattern_refresh()
 
     @call_in_wx_main
     def _on_shapes_update(self, shapes):
@@ -480,6 +489,14 @@ class MillingTaskController:
         if self._relevant_task_names is None:
             return list(checked)
         return [name for name in checked if name in self._relevant_task_names]
+
+    def _request_workflow_pattern_refresh(self) -> None:
+        """Re-apply the workflow filter after the PATTERNS list/panels were rebuilt."""
+        amc = getattr(self._tab, "automated_milling_controller", None)
+        if amc is not None:
+            wx.CallAfter(amc._refresh_pattern_grey_state)
+        else:
+            wx.CallAfter(self.update_pattern_grey_state, self._relevant_task_names)
 
     @call_in_wx_main
     def update_pattern_grey_state(self, relevant_names: set) -> None:
