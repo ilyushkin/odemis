@@ -270,8 +270,8 @@ def run_milling_tasks(tasks: List[MillingTaskSettings], fib_stream: FIBStream, f
 
 class MillingWorkflowTask(Enum):
     TrenchMilling = "Trench Milling"
-    RoughMillingOnGrid = "Rough Milling - On-Grid"
-    RoughMillingWaffle = "Rough Milling - Waffle"
+    RoughMillingOnGrid = "Rough Milling (On-Grid)"
+    RoughMillingWaffle = "Rough Milling (Waffle)"
     Polishing = "Polishing"
 
 status_map: Dict[MillingWorkflowTask, str] = {

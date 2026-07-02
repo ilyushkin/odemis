@@ -60,10 +60,10 @@ from odemis.util import is_point_in_rect, units
 # yellow, cyan, magenta, lime, orange, hotpink, dodgerblue
 MILLING_COLOURS_CYCLE = ["#FFFF00", "#00FFFF", "#FF00FF", "#00FF00", "#FFA500", "#FF69B4", "#1E90FF"]
 MILLING_COLOURS_CANONICAL = {
-    "Rough Milling 01": "#FFFF00",
-    "Rough Milling 02": "#00FFFF",
-    "Polishing 01": "#FF00FF",
-    "Polishing 02": "#00FF00",
+    "Rough Milling 1": "#FFFF00",
+    "Rough Milling 2": "#00FFFF",
+    "Polishing 1": "#FF00FF",
+    "Polishing 2": "#00FF00",
     "Microexpansion": "#FFA500",
     "Fiducial": "#FF69B4",
     "Trench": "#1E90FF",
@@ -452,7 +452,7 @@ class MillingTaskController:
                 has_multiple_shapes = len(generated_shapes) > 1
                 for pshape in generated_shapes:
                     if has_multiple_shapes:
-                        # Each sub-shape gets its own label (e.g. "Trench (Top)" / "Trench (Bottom)")
+                        # Each sub-shape gets its own label (e.g. "Trench (A)" / "Trench (B)")
                         name = pshape.name.value
                     else:
                         name = task_name
@@ -670,7 +670,7 @@ class AutomatedMillingController:
             MillingWorkflowTask.RoughMillingWaffle,
             MillingWorkflowTask.Polishing,
         ]
-        pretty_task_names = ["Trench Milling", "Rough Milling - On-Grid", "Rough Milling - Waffle", "Polishing"]
+        pretty_task_names = ["Trench Milling", "Rough Milling (On-Grid)", "Rough Milling (Waffle)", "Polishing"]
         # TrenchMilling and RoughMillingWaffle are disabled by default
         default_checked = {MillingWorkflowTask.RoughMillingOnGrid, MillingWorkflowTask.Polishing}
         self._panel.workflow_task_chk_list.SetItems(pretty_task_names)

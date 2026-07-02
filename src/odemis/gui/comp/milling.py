@@ -271,10 +271,10 @@ class MillingTaskPanel(wx.Panel):
             "height": {"label": "Height", "accuracy": 2, "unit": "m"},
             "depth": {"label": "Depth", "accuracy": 2, "unit": "m"},
             "spacing": {"label": "Spacing", "accuracy": 2, "unit": "m"},
-            "width_top": {"label": "Width (Top)", "accuracy": 2, "unit": "m"},
-            "height_top": {"label": "Height (Top)", "accuracy": 2, "unit": "m"},
-            "width_bottom": {"label": "Width (Bottom)", "accuracy": 2, "unit": "m"},
-            "height_bottom": {"label": "Height (Bottom)", "accuracy": 2, "unit": "m"},
+            "width_top": {"label": "Width (A)", "accuracy": 2, "unit": "m"},
+            "height_top": {"label": "Height (A)", "accuracy": 2, "unit": "m"},
+            "width_bottom": {"label": "Width (B)", "accuracy": 2, "unit": "m"},
+            "height_bottom": {"label": "Height (B)", "accuracy": 2, "unit": "m"},
         }
 
         unsupported_parameters = ["name", "rotation",

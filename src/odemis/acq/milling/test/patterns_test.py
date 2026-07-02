@@ -138,7 +138,7 @@ class TrenchPatternParametersTestCase(unittest.TestCase):
         # test generate
         patterns = self.pattern.generate()
         self.assertEqual(len(patterns), 2)
-        self.assertEqual(patterns[0].name.value, f"{self.name} (Upper)")
+        self.assertEqual(patterns[0].name.value, f"{self.name} (A)")
         self.assertAlmostEqual(patterns[0].width.value, self.width)
         self.assertAlmostEqual(patterns[0].height.value, self.height)
         self.assertAlmostEqual(patterns[0].depth.value, self.depth)
@@ -146,7 +146,7 @@ class TrenchPatternParametersTestCase(unittest.TestCase):
         numpy.testing.assert_array_almost_equal(patterns[0].center.value, (0, (self.spacing + self.height) / 2))
         self.assertEqual(patterns[0].scan_direction.value, "TopToBottom")
 
-        self.assertEqual(patterns[1].name.value, f"{self.name} (Lower)")
+        self.assertEqual(patterns[1].name.value, f"{self.name} (B)")
         self.assertAlmostEqual(patterns[1].width.value, self.width)
         self.assertAlmostEqual(patterns[1].height.value, self.height)
         self.assertAlmostEqual(patterns[1].depth.value, self.depth)
@@ -209,7 +209,7 @@ class MicroexpansionPatternParametersTestCase(unittest.TestCase):
         # test generate
         patterns = self.pattern.generate()
         self.assertEqual(len(patterns), 2)
-        self.assertEqual(patterns[0].name.value, f"{self.name} (Left)")
+        self.assertEqual(patterns[0].name.value, f"{self.name} (A)")
         self.assertAlmostEqual(patterns[0].width.value, self.width)
         self.assertAlmostEqual(patterns[0].height.value, self.height)
         self.assertAlmostEqual(patterns[0].depth.value, self.depth)
@@ -217,7 +217,7 @@ class MicroexpansionPatternParametersTestCase(unittest.TestCase):
         numpy.testing.assert_array_almost_equal(patterns[0].center.value, (-self.spacing, 0))
         self.assertEqual(patterns[0].scan_direction.value, "TopToBottom")
 
-        self.assertEqual(patterns[1].name.value, f"{self.name} (Right)")
+        self.assertEqual(patterns[1].name.value, f"{self.name} (B)")
         self.assertAlmostEqual(patterns[1].width.value, self.width)
         self.assertAlmostEqual(patterns[1].height.value, self.height)
         self.assertAlmostEqual(patterns[1].depth.value, self.depth)

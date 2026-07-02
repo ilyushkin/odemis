@@ -42,8 +42,8 @@
       center_x: 0
       center_y: 0
       pattern: 'microexpansion'
-'Rough Milling 01':
-  name: 'Rough Milling 01'
+'Rough Milling 1':
+  name: 'Rough 1'
   milling:
     current: 1.0e-9
     voltage: 30000.0
@@ -51,7 +51,7 @@
     mode: 'Serial'
     channel: 'ion'
   patterns:
-    - name: 'Rough Trench'
+    - name: 'Rough 1'
       width: 1.0e-05
       height: 6.0e-06
       depth: 1.0e-06
@@ -59,8 +59,8 @@
       center_x: 0
       center_y: 0
       pattern: 'trench'
-'Rough Milling 02':
-  name: 'Rough Milling 02'
+'Rough Milling 2':
+  name: 'Rough 2'
   milling:
     current: 0.2e-9
     voltage: 30000.0
@@ -68,7 +68,7 @@
     mode: 'Serial'
     channel: 'ion'
   patterns:
-    - name: 'Rough Trench 02'
+    - name: 'Rough 2'
       width: 9.5e-6
       height: 4.0e-06
       depth: 0.8e-06
@@ -76,8 +76,8 @@
       center_x: 0
       center_y: 0
       pattern: 'trench'
-'Polishing 01':
-  name: 'Polishing 01'
+'Polishing 1':
+  name: 'Polishing 1'
   milling:
     current: 60.0e-12
     voltage: 30000.0
@@ -85,7 +85,7 @@
     mode: 'Serial'
     channel: 'ion'
   patterns:
-    - name: 'Polishing Trench 01'
+    - name: 'Polishing 1'
       width: 9.0e-06
       height: 1.0e-06
       depth: 0.6e-06
@@ -93,8 +93,8 @@
       center_x: 0
       center_y: 0
       pattern: 'trench'
-'Polishing 02':
-  name: 'Polishing 02'
+'Polishing 2':
+  name: 'Polishing 2'
   milling:
     current: 60.0e-12
     voltage: 30000.0
@@ -102,7 +102,7 @@
     mode: 'Serial'
     channel: 'ion'
   patterns:
-    - name: 'Polishing Trench 02'
+    - name: 'Polishing 2'
       width: 8.5e-06
       height: 0.6e-06
       depth: 0.5e-06

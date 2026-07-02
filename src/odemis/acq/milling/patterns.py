@@ -150,7 +150,7 @@ class TrenchPatternParameters(MillingPatternParameters):
 
         patterns = [
             RectanglePatternParameters(
-                name=f"{name} (Upper)",
+                name=f"{name} (A)",
                 width=width,
                 height=height,
                 depth=depth,
@@ -159,7 +159,7 @@ class TrenchPatternParameters(MillingPatternParameters):
                 scan_direction="TopToBottom",
             ),
             RectanglePatternParameters(
-                name=f"{name} (Lower)",
+                name=f"{name} (B)",
                 width=width,
                 height=height,
                 depth=depth,
@@ -220,7 +220,7 @@ class MicroexpansionPatternParameters(MillingPatternParameters):
 
         patterns = [
             RectanglePatternParameters(
-                name=f"{name} (Left)",
+                name=f"{name} (A)",
                 width=width,
                 height=height,
                 depth=depth,
@@ -229,7 +229,7 @@ class MicroexpansionPatternParameters(MillingPatternParameters):
                 scan_direction="TopToBottom",
             ),
             RectanglePatternParameters(
-                name=f"{name} (Right)",
+                name=f"{name} (B)",
                 width=width,
                 height=height,
                 depth=depth,
@@ -308,9 +308,9 @@ class AsymmetricTrenchPatternParameters(MillingPatternParameters):
         return f"{self.to_dict()}"
 
     def generate(self) -> List[MillingPatternParameters]:
-        """Generate the two rectangle shapes (Top and Bottom) from this pattern.
+        """Generate the two rectangle shapes (A and B) from this pattern.
 
-        The top box is centred above the gap midpoint, the bottom box below it.
+        The A box is centred above the gap midpoint, the B box below it.
         Both boxes are horizontally centred on center_x.
         """
         cx, cy = self.center.value
@@ -318,7 +318,7 @@ class AsymmetricTrenchPatternParameters(MillingPatternParameters):
         lower_cy = cy - self.spacing.value / 2 - self.height_bottom.value / 2
         return [
             RectanglePatternParameters(
-                name=f"{self.name.value} (Top)",
+                name=f"{self.name.value} (A)",
                 width=self.width_top.value,
                 height=self.height_top.value,
                 depth=self.depth.value,
@@ -326,7 +326,7 @@ class AsymmetricTrenchPatternParameters(MillingPatternParameters):
                 scan_direction="TopToBottom",
             ),
             RectanglePatternParameters(
-                name=f"{self.name.value} (Bottom)",
+                name=f"{self.name.value} (B)",
                 width=self.width_bottom.value,
                 height=self.height_bottom.value,
                 depth=self.depth.value,
