@@ -2,9 +2,9 @@
 """
 Created on 1 April 2025
 
-@author: Patrick Cleeve
+@author: Patrick Cleeve, Alexéy Ilyushkin
 
-Copyright © 2025 Patrick Cleeve, Delmic
+Copyright © 2025 Patrick Cleeve, Alexéy Ilyushkin, Delmic
 
 This file is part of Odemis.
 
@@ -39,7 +39,7 @@ class MillingPatternCheckList(wx.Panel):
         [eye btn]  Label text                              [checkbox]
 
     The eye button controls whether the item is "active" (relevant to the
-    current workflow selection).  The checkbox records the user's intent to
+    current workflow selection). The checkbox records the user's intent to
     include that pattern in a milling run.
 
     - When the eye is closed (item inactive / grayed): the row label is dimmed,
@@ -69,7 +69,7 @@ class MillingPatternCheckList(wx.Panel):
         self._items: List[dict] = []
         self._chklist_handlers: List = []
 
-    # ── Bind override ────────────────────────────────────────────────────────
+    # Bind override
 
     def Bind(self, event, handler=None, source=None,
              id: int = wx.ID_ANY, id2: int = wx.ID_ANY):
@@ -108,7 +108,7 @@ class MillingPatternCheckList(wx.Panel):
         if idx is not None:
             self._fire_chklist_event(idx)
 
-    # ── wx.CheckListBox-compatible API ───────────────────────────────────────
+    # wx.CheckListBox-compatible API
 
     def SetItems(self, items: List[str]):
         """Replace all items.  All items start checked and active (eye open).
@@ -117,7 +117,7 @@ class MillingPatternCheckList(wx.Panel):
         """
         # Destroy existing widgets
         for item in self._items:
-            item["eye"].Destroy()
+            #item["eye"].Destroy()
             item["label"].Destroy()
             item["cb"].Destroy()
         self._gb.Clear(False)
@@ -125,33 +125,33 @@ class MillingPatternCheckList(wx.Panel):
 
         for row, name in enumerate(items):
             # Eye indicator (col 0) is read-only, shows active/inactive state
-            eye_bmp = wx.StaticBitmap(self, bitmap=img.getBitmap("icon/ico_eye_open.png"))
-            eye_bmp.SetToolTip("Indicates whether this pattern is active for the selected workflow step")
+            # eye_bmp = wx.StaticBitmap(self, bitmap=img.getBitmap("icon/ico_eye_open.png"))
+            # eye_bmp.SetToolTip("Indicates whether this pattern is active for the selected workflow step")
 
+            # Checkbox (col 0)
+            cb = wx.CheckBox(self, style=wx.ALIGN_RIGHT | wx.NO_BORDER)
+            cb.SetValue(True)
+            cb.SetBackgroundColour(gui.BG_COLOUR_MAIN)
+            cb.Bind(wx.EVT_CHECKBOX, self._on_checkbox_click)
+            self._gb.Add(cb, pos=(row, 0),
+                         flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=4)
+            
             # Label (col 0, same cell in an h_sizer)
             h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-            h_sizer.Add(eye_bmp, flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=3)
+            #h_sizer.Add(eye_bmp, flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=3)
             lbl = wx.StaticText(self, label=name)
             lbl.SetForegroundColour(gui.FG_COLOUR_MAIN)
             lbl.SetBackgroundColour(gui.BG_COLOUR_MAIN)
             h_sizer.Add(lbl, flag=wx.ALIGN_CENTER_VERTICAL)
 
-            self._gb.Add(h_sizer, pos=(row, 0),
+            self._gb.Add(h_sizer, pos=(row, 1),
                          flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=2)
 
-            # Checkbox (col 1)
-            cb = wx.CheckBox(self, style=wx.ALIGN_RIGHT | wx.NO_BORDER)
-            cb.SetValue(True)
-            cb.SetBackgroundColour(gui.BG_COLOUR_MAIN)
-            cb.Bind(wx.EVT_CHECKBOX, self._on_checkbox_click)
-            self._gb.Add(cb, pos=(row, 1),
-                         flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=4)
-
-            self._items.append({"name": name, "eye": eye_bmp,
-                                 "label": lbl, "cb": cb, "active": True})
+            self._items.append({"name": name, "cb": cb, # "eye": eye_bmp,
+                                 "label": lbl, "active": True})
 
         if not self._growable_col_set:
-            self._gb.AddGrowableCol(0, proportion=1)
+            self._gb.AddGrowableCol(1, proportion=1)
             self._growable_col_set = True
         self.Layout()
 
@@ -202,7 +202,7 @@ class MillingPatternCheckList(wx.Panel):
         """
         return len(self._items)
 
-    # ── Extended API ─────────────────────────────────────────────────────────
+    # Extended API
 
     def SetItemActive(self, idx: int, active: bool):
         """Activate or gray out an item without changing its checked state.
@@ -216,10 +216,10 @@ class MillingPatternCheckList(wx.Panel):
         """
         item = self._items[idx]
         item["active"] = active
-        item["eye"].SetBitmap(
-            img.getBitmap("icon/ico_eye_open.png") if active
-            else img.getBitmap("icon/ico_eye_closed.png")
-        )
+        # item["eye"].SetBitmap(
+        #     img.getBitmap("icon/ico_eye_open.png") if active
+        #     else img.getBitmap("icon/ico_eye_closed.png")
+        # )
         item["cb"].Enable(active)
         item["label"].SetForegroundColour(
             gui.FG_COLOUR_MAIN if active else gui.FG_COLOUR_DIS
