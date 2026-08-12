@@ -25,6 +25,7 @@ import math
 import os
 import threading
 import time
+import json
 from concurrent import futures
 from concurrent.futures._base import CANCELLED, FINISHED, RUNNING, CancelledError
 from typing import List, Optional, Union
@@ -120,6 +121,81 @@ def _crop_to_reduced_area(ref_img: 'FibsemImage', rect: 'FibsemRectangle') -> 'F
     # crop along the last two axes, DataArray slicing behaves like numpy
     ref_img.data = ref_img.data[..., y0:y1, x0:x1]
     return ref_img
+
+
+def _populate_tescan_metadata_defaults(extra_settings: dict) -> dict:
+    """
+    Populate missing Tescan metadata fields with default values.
+
+    Tescan driver doesn't expose all VAs that other microscopes (e.g., ThermoMicroscope) do.
+    This function ensures that required metadata fields are present with sensible defaults.
+
+    :param extra_settings: The metadata dictionary from SettingsObserver
+    :return: The same dictionary with missing fields populated
+    """
+    # Ensure beam component dictionaries exist
+    for beam_key in ["Electron-Beam", "Ion-Beam"]:
+        if beam_key not in extra_settings:
+            extra_settings[beam_key] = {}
+
+        beam_md = extra_settings[beam_key]
+
+        # Populate missing beam metadata with defaults
+        if "shift" not in beam_md:
+            beam_md["shift"] = [[0.0, 0.0]]
+        if "stigmator" not in beam_md:
+            beam_md["stigmator"] = [[0.0, 0.0]]
+        if "beamCurrent" not in beam_md:
+            beam_md["beamCurrent"] = [0.0]
+        if "dwellTime" not in beam_md:
+            beam_md["dwellTime"] = [0.0]
+        if "accelVoltage" not in beam_md:
+            beam_md["accelVoltage"] = [0.0]
+        if "horizontalFoV" not in beam_md:
+            beam_md["horizontalFoV"] = [0.0]
+        if "resolution" not in beam_md:
+            beam_md["resolution"] = [[0, 0]]
+        if "rotation" not in beam_md:
+            beam_md["rotation"] = [0.0]
+
+    # Ensure focus component dictionaries exist
+    for focus_key in ["Electron-Focus", "Ion-Focus"]:
+        if focus_key not in extra_settings:
+            extra_settings[focus_key] = {"position": [{"z": 0.0}]}
+        elif "position" not in extra_settings[focus_key]:
+            extra_settings[focus_key]["position"] = [{"z": 0.0}]
+        elif not extra_settings[focus_key]["position"]:
+            extra_settings[focus_key]["position"] = [{"z": 0.0}]
+        elif "z" not in extra_settings[focus_key]["position"][0]:
+            extra_settings[focus_key]["position"][0]["z"] = 0.0
+
+    # Ensure detector component dictionaries exist
+    for detector_key in ["Electron-Detector", "Ion-Detector"]:
+        if detector_key not in extra_settings:
+            extra_settings[detector_key] = {}
+
+        detector_md = extra_settings[detector_key]
+
+        # Populate missing detector metadata with defaults
+        if "type" not in detector_md:
+            detector_md["type"] = [""]
+        if "mode" not in detector_md:
+            detector_md["mode"] = [""]
+        if "brightness" not in detector_md:
+            detector_md["brightness"] = [0.0]
+        if "contrast" not in detector_md:
+            detector_md["contrast"] = [0.0]
+
+    # Ensure stage position metadata exists
+    if "Stage" not in extra_settings:
+        extra_settings["Stage"] = {"position": [{}]}
+    elif "position" not in extra_settings["Stage"]:
+        extra_settings["Stage"]["position"] = [{}]
+    elif not extra_settings["Stage"]["position"]:
+        extra_settings["Stage"]["position"] = [{}]
+
+    return extra_settings
+
 
 
 def create_fibsemos_tfs_microscope() -> 'OdemisThermoMicroscope':
@@ -377,13 +453,22 @@ class FibsemOSMillingTaskManager:
                         raise CancelledError()
 
                 logging.info(f"Running milling stage: {stage.name}")
-                ref_img = from_odemis_image(_get_reference_image(self.feature))
+                odemis_ref_image = _get_reference_image(self.feature)
+                # Populate missing Tescan metadata fields with defaults
+                if model.MD_EXTRA_SETTINGS in odemis_ref_image.metadata:
+                    extra_settings = odemis_ref_image.metadata[model.MD_EXTRA_SETTINGS]
+                    if isinstance(extra_settings, str):
+                        extra_settings = json.loads(extra_settings)
+                    extra_settings = _populate_tescan_metadata_defaults(extra_settings)
+                    odemis_ref_image.metadata[model.MD_EXTRA_SETTINGS] = extra_settings
+                ref_img = from_odemis_image(odemis_ref_image)
                 ref_img.metadata.image_settings.path = self.path
                 ref_img.metadata.image_settings.reduced_area = stage.alignment.rect
 
                 ref_img = _crop_to_reduced_area(ref_img, stage.alignment.rect)
+                stage.reference_image = ref_img
 
-                mill_stages(self.microscope, [stage], ref_img)
+                mill_stages(self.microscope, [stage])
 
         finally:
             with self._lock:
