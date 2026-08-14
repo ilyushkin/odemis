@@ -55,7 +55,6 @@ try:
         FibsemMillingStage,
         MillingAlignment,
         estimate_total_milling_time,
-        mill_stages,
     )
     from fibsem.milling.patterning.patterns2 import (
         BasePattern,
@@ -437,6 +436,29 @@ class FibsemOSMillingTaskManager:
         """Estimate the total milling time for the currently configured stages (seconds)."""
         return estimate_total_milling_time(self.milling_stages)
 
+    def _run_milling_stage(self, stage: "FibsemMillingStage") -> None:
+        """Run one stage and always restore the pre-stage ion-beam state.
+
+        The removed fibsemOS ``mill_stages`` helper used to own this lifecycle.
+        ``FibsemMillingStage.run`` only executes the strategy, so callers using
+        it directly must still finish milling and restore the beam shift.
+        """
+        channel = stage.milling.milling_channel
+        imaging_current = self.microscope.get_beam_current(channel)
+        imaging_voltage = self.microscope.get_beam_voltage(channel)
+        initial_beam_shift = self.microscope.get_beam_shift(channel)
+
+        try:
+            stage.run(self.microscope)
+        finally:
+            try:
+                self.microscope.finish_milling(
+                    imaging_current=imaging_current,
+                    imaging_voltage=imaging_voltage,
+                )
+            finally:
+                self.microscope.set_beam_shift(initial_beam_shift, beam_type=channel)
+
     def _run(self):
         """Internal worker that performs the milling stages sequentially."""
         future = self._future
@@ -468,7 +490,7 @@ class FibsemOSMillingTaskManager:
                 ref_img = _crop_to_reduced_area(ref_img, stage.alignment.rect)
                 stage.reference_image = ref_img
 
-                mill_stages(self.microscope, [stage])
+                self._run_milling_stage(stage)
 
         finally:
             with self._lock:
