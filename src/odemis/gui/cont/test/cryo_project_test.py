@@ -3,9 +3,9 @@
 """
 Created on 22 Apr 2026
 
-@author: Tim Moerkerken
+@author: Tim Moerkerken, Alexéy Ilyushkin
 
-Copyright © 2026 Tim Moerkerken, Delmic
+Copyright © 2026 Tim Moerkerken, Alexéy Ilyushkin, Delmic
 
 This file is part of Odemis.
 
@@ -127,6 +127,20 @@ class TestCryoProject(unittest.TestCase):
         feature_data = load_project(self.test_dir)["features"][0]
         self.assertEqual(feature_decoder(feature_data).milling_feature_offset.value,
                          feature.milling_feature_offset.value)
+
+    def test_milling_alignment_area_roundtrip(self):
+        feature = CryoFeature("Feature-1", {"x": 0, "y": 0, "z": 0}, {"z": 0})
+        feature.millingAlignmentArea.value = (0.1, 0.2, 0.3, 0.3)
+        main_data = MagicMock()
+        main_data.tab.value.conf.pj_last_path = self.test_dir
+        main_data.features.value = [feature]
+        main_data.overviews.value = []
+
+        save_project(main_data)
+        feature_data = load_project(self.test_dir)["features"][0]
+
+        self.assertEqual(feature_decoder(feature_data).millingAlignmentArea.value,
+                         feature.millingAlignmentArea.value)
 
     def test_image_operations(self):
         """Tests that the image operations work properly."""

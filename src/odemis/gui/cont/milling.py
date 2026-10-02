@@ -30,7 +30,7 @@ import logging
 import os
 from concurrent.futures import CancelledError
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import wx
 
@@ -39,6 +39,8 @@ from odemis.acq.feature import (
     FEATURE_ACTIVE,
     FEATURE_DEACTIVE,
     CryoFeature,
+    constrain_milling_alignment_area,
+    constrain_milling_alignment_area_size,
 )
 from odemis.acq.milling import millmng
 from odemis.acq.milling.millmng import MillingWorkflowTask, run_automated_milling
@@ -52,13 +54,18 @@ from odemis.acq.milling.patterns import (
     TrenchPatternParameters,
 )
 from odemis.acq.milling.tasks import MillingTaskSettings
+from odemis.acq.stream import StaticStream
 from odemis.gui.comp.milling import MillingTaskPanel
 from odemis.gui.comp.overlay._constants import (
     MILLING_OVERLAY_ACTIVE_OPACITY,
     MILLING_OVERLAY_INACTIVE_OPACITY,
 )
-from odemis.gui.comp.overlay.base import Vec
-from odemis.gui.comp.overlay.milling import MillingPatternOverlay
+from odemis.gui.comp.overlay.base import SEL_MODE_DRAG, Vec
+from odemis.gui.comp.overlay.milling import (
+    MillingAlignmentAreaOverlay,
+    MillingAlignmentRectangleOverlay,
+    MillingPatternOverlay,
+)
 from odemis.gui.comp.overlay.rectangle import MillingRectangleOverlay
 from odemis.gui.comp.overlay.shapes import EditableShape
 from odemis.gui.comp.popup import show_message
@@ -162,6 +169,39 @@ def rectangle_pattern_to_shape(canvas,
 
     return rect
 
+
+def _alignment_area_to_physical_points(
+        area: Tuple[float, float, float, float], stream: StaticStream) -> List[Tuple[float, float]]:
+    """Convert a normalized image area to physical rectangle points."""
+    raw = stream.raw[0]
+    image_height, image_width = raw.shape[-2:]
+    left, top, width, height = area
+    return [
+        stream.getPhysicalCoordinates((left * image_width, top * image_height)),
+        stream.getPhysicalCoordinates(((left + width) * image_width, top * image_height)),
+        stream.getPhysicalCoordinates(((left + width) * image_width, (top + height) * image_height)),
+        stream.getPhysicalCoordinates((left * image_width, (top + height) * image_height)),
+    ]
+
+
+def _alignment_area_from_shape(
+        shape: MillingAlignmentRectangleOverlay, stream: StaticStream) -> Tuple[float, float, float, float]:
+    """Convert physical rectangle points to a normalized image area."""
+    pixels = [
+        stream.getPixelCoordinates(point, check_bbox=False)
+        for point in shape.get_physical_sel()
+    ]
+    x_coordinates = [point[0] for point in pixels]
+    y_coordinates = [point[1] for point in pixels]
+    raw = stream.raw[0]
+    image_height, image_width = raw.shape[-2:]
+    left = min(x_coordinates) / image_width
+    top = min(y_coordinates) / image_height
+    width = (max(x_coordinates) - min(x_coordinates)) / image_width
+    height = (max(y_coordinates) - min(y_coordinates)) / image_height
+    return (left, top, width, height)
+
+
 class MillingTaskController:
     """
     Takes care of handling the "PATTERNS" collapsible panel, which shows the selected milling tasks, and their settings.
@@ -193,9 +233,19 @@ class MillingTaskController:
         self.allow_milling_pattern_move = True
         self._active_spot_size_pattern = None
 
-        # pattern overlay
+        # Draw pattern previews below the editable alignment area.
         self.rectangles_overlay = MillingPatternOverlay(cnvs=self.canvas)
         self.canvas.add_world_overlay(self.rectangles_overlay)
+
+        # One editable alignment area, shared by all milling tasks of the feature.
+        self.alignment_area_overlay = MillingAlignmentAreaOverlay(
+            self.canvas,
+            self._update_alignment_area_from_shape,
+            self._deselect_milling_task_for_alignment_area,
+        )
+        self.canvas.add_world_overlay(self.alignment_area_overlay)
+        self.alignment_area_overlay.active.value = True
+
         self.canvas.Bind(wx.EVT_LEFT_DOWN, self.on_mouse_down) # bind the mouse down event
         self.canvas.Bind(wx.EVT_CHAR, self.on_char)
 
@@ -244,6 +294,7 @@ class MillingTaskController:
         self.set_milling_tasks(milling_tasks)
         self._update_pattern_panels()
         self._update_pattern_movement_controls()
+        self.draw_alignment_area()
 
     def _update_pattern_movement_controls(self) -> None:
         """Enable pattern movement controls when a feature can be edited."""
@@ -251,6 +302,146 @@ class MillingTaskController:
         can_move = feature is not None and self.allow_milling_pattern_move
         self._panel.chk_move_all_patterns.Enable(can_move)
         self._panel.btn_snap_patterns_to_feature.Enable(can_move and feature.milling_feature_offset.value is not None)
+
+    def _get_reference_stream(self, feature: CryoFeature) -> Optional[StaticStream]:
+        """Return the displayed stream containing the feature reference image."""
+        stream = self.acq_cont.stream
+        if stream is not None and stream.raw and stream.raw[0] is feature.reference_image:
+            return stream
+
+        if self.viewport.view is None:
+            return None
+        displayed_streams = [
+            candidate
+            for candidate in self.viewport.view.getStreams()
+            if candidate.raw
+        ]
+        for candidate in displayed_streams:
+            if candidate.raw[0] is feature.reference_image:
+                return candidate
+        if len(displayed_streams) == 1:
+            return displayed_streams[0]
+        return None
+
+    @call_in_wx_main
+    def draw_alignment_area(self, _: Any = None) -> None:
+        """Draw the current feature's editable area on the saved FIB image."""
+        self.alignment_area_overlay.clear()
+
+        feature = self._tab_data.main.currentFeature.value
+        stream = self._get_reference_stream(feature) if feature is not None else None
+        if feature is None or feature.reference_image is None or stream is None or not stream.raw:
+            self.canvas.request_drawing_update()
+            return
+
+        area = constrain_milling_alignment_area(feature.millingAlignmentArea.value, feature.reference_image.shape)
+        feature.millingAlignmentArea.value = area
+
+        shape = MillingAlignmentRectangleOverlay(
+            self.canvas,
+            colour=theme.selection_secondary,
+            show_dimensions=True,
+            can_rotate=False,
+        )
+        shape.name.value = "Alignment area"
+        shape.dashed = True
+        shape.set_physical_sel(_alignment_area_to_physical_points(area, stream))
+        shape._points = shape.get_physical_sel()
+        shape.points.value = shape._points
+        shape.is_created.value = True
+        shape.selected.value = False
+        self.alignment_area_overlay.add_shape(shape)
+
+    def _update_alignment_area_from_shape(
+            self, shape: MillingAlignmentRectangleOverlay, commit: bool) -> None:
+        """Constrain an edited area, update its feature, and optionally save it."""
+        feature = self._tab_data.main.currentFeature.value
+        stream = self._get_reference_stream(feature) if feature is not None else None
+        if feature is None or feature.reference_image is None:
+            return
+        if stream is None or not stream.raw or shape.get_physical_sel() is None:
+            return
+
+        previous_area = feature.millingAlignmentArea.value
+        previous_left, previous_top, old_width, old_height = previous_area
+
+        if shape.interaction_mode == SEL_MODE_DRAG:
+            left, top, width, height = _alignment_area_from_shape(shape, stream)
+            center_x = left + width / 2
+            center_y = top + height / 2
+            requested_area = (
+                center_x - old_width / 2,
+                center_y - old_height / 2,
+                old_width,
+                old_height,
+            )
+        else:
+            corner_index = shape.edit_v_point_idx
+            corners = shape.get_physical_sel()
+            if corner_index not in (1, 2, 3, 4) or corners is None:
+                return
+            image_height, image_width = stream.raw[0].shape[-2:]
+            dragged_pixel = stream.getPixelCoordinates(
+                corners[corner_index - 1], check_bbox=False)
+            dragged_x = dragged_pixel[0] / image_width
+            dragged_y = dragged_pixel[1] / image_height
+
+            right = previous_left + old_width
+            bottom = previous_top + old_height
+            if corner_index == 1:
+                anchor_x, anchor_y = right, bottom
+                requested_width = anchor_x - dragged_x
+                requested_height = anchor_y - dragged_y
+                maximum_width = anchor_x
+                maximum_height = anchor_y
+            elif corner_index == 2:
+                anchor_x, anchor_y = previous_left, bottom
+                requested_width = dragged_x - anchor_x
+                requested_height = anchor_y - dragged_y
+                maximum_width = 1.0 - anchor_x
+                maximum_height = anchor_y
+            elif corner_index == 3:
+                anchor_x, anchor_y = previous_left, previous_top
+                requested_width = dragged_x - anchor_x
+                requested_height = dragged_y - anchor_y
+                maximum_width = 1.0 - anchor_x
+                maximum_height = 1.0 - anchor_y
+            else:
+                anchor_x, anchor_y = right, previous_top
+                requested_width = anchor_x - dragged_x
+                requested_height = dragged_y - anchor_y
+                maximum_width = anchor_x
+                maximum_height = 1.0 - anchor_y
+
+            requested_width, requested_height = constrain_milling_alignment_area_size(
+                (
+                    max(requested_width, 1 / image_width),
+                    max(requested_height, 1 / image_height),
+                ),
+                feature.reference_image.shape,
+                maximum_size=(maximum_width, maximum_height),
+            )
+            if corner_index == 1:
+                left, top = anchor_x - requested_width, anchor_y - requested_height
+            elif corner_index == 2:
+                left, top = anchor_x, anchor_y - requested_height
+            elif corner_index == 3:
+                left, top = anchor_x, anchor_y
+            else:
+                left, top = anchor_x - requested_width, anchor_y
+            requested_area = (left, top, requested_width, requested_height)
+
+        area = constrain_milling_alignment_area(
+            requested_area, feature.reference_image.shape)
+        feature.millingAlignmentArea.value = area
+
+        shape.set_physical_sel(_alignment_area_to_physical_points(area, stream))
+        shape._points = shape.get_physical_sel()
+        shape.points.value = shape._points
+        self.canvas.request_drawing_update()
+
+        if commit:
+            save_project(self._tab_data.main)
 
     @call_in_wx_main
     def _update_pattern_panels(self) -> None:
@@ -432,9 +623,7 @@ class MillingTaskController:
     def _on_milling_task_selected(self, evt: wx.CommandEvent):
         """Show the correction overlay for the highlighted pattern list row."""
         task = self.milling_tasks.get(evt.GetString())
-        self._active_spot_size_pattern = (
-            task.patterns[0] if task and task.patterns else None
-        )
+        self._active_spot_size_pattern = task.patterns[0] if task and task.patterns else None
         self.draw_milling_tasks()
         evt.Skip()
 
@@ -443,6 +632,15 @@ class MillingTaskController:
         self._panel.milling_task_chk_list.SetSelection(wx.NOT_FOUND)
         self._active_spot_size_pattern = None
         self.draw_milling_tasks()
+
+    def _deselect_milling_task_for_alignment_area(self) -> None:
+        """Clear the highlighted milling task without rebuilding the edited area."""
+        task_list = self._panel.milling_task_chk_list
+        if task_list.GetSelection() == wx.NOT_FOUND and self._active_spot_size_pattern is None:
+            return
+        task_list.SetSelection(wx.NOT_FOUND)
+        self._active_spot_size_pattern = None
+        self.draw_milling_tasks(redraw_alignment_area=False)
 
     def on_mouse_down(self, evt):
         active_canvas = evt.GetEventObject()
@@ -715,9 +913,12 @@ class MillingTaskController:
         self.draw_milling_tasks()
 
     @call_in_wx_main
-    def draw_milling_tasks(self, _=None):
+    def draw_milling_tasks(self, _: Any = None, redraw_alignment_area: bool = True) -> None:
         """Redraw all milling tasks on the canvas.
         """
+        if redraw_alignment_area:
+            self.draw_alignment_area()
+
         # Clears the rectangles_overlay first
         self.rectangles_overlay.clear()
         self.rectangles_overlay.clear_labels()

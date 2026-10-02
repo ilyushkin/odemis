@@ -30,13 +30,17 @@ import numpy
 from odemis import model
 from odemis.acq.feature import (
     CryoFeature,
+    DEFAULT_MILLING_ALIGNMENT_AREA,
+    FEATURE_READY_TO_MILL,
+    MIN_MILLING_ALIGNMENT_AREA_PIXELS,
+    MillingAlignmentAreaTooSmallError,
+    REFERENCE_IMAGE_FILENAME,
+    constrain_milling_alignment_area,
     feature_decoder,
     load_milling_tasks,
-    FEATURE_READY_TO_MILL,
-    REFERENCE_IMAGE_FILENAME,
 )
-from odemis.acq.move import Posture
 from odemis.acq.milling import DEFAULT_MILLING_TASKS_PATH
+from odemis.acq.move import Posture
 
 logging.getLogger().setLevel(logging.DEBUG)
 
@@ -151,6 +155,73 @@ class TestFeatureEncoderDecoder(unittest.TestCase):
 
         filename = os.path.join(feature.path, f"{feature.name.value}-{REFERENCE_IMAGE_FILENAME}")
         self.assertTrue(os.path.exists(filename))
+
+    def test_too_small_reference_image_is_not_saved(self):
+        feature = CryoFeature(
+            name="TestFeature-1",
+            stage_position={"x": 0, "y": 0},
+            fm_focus_position={"z": 0},
+        )
+        self.path = os.path.join(os.getcwd(), feature.name.value)
+        reference_image = model.DataArray(numpy.zeros(shape=(200, 300)), metadata={})
+
+        with self.assertRaises(MillingAlignmentAreaTooSmallError):
+            feature.save_milling_task_data(
+                stage_position={"x": 0, "y": 0},
+                path=self.path,
+                reference_image=reference_image,
+            )
+
+        self.assertFalse(os.path.exists(self.path))
+        self.assertIsNone(feature.reference_image)
+
+
+class TestMillingAlignmentArea(unittest.TestCase):
+    def test_default_area(self):
+        feature = CryoFeature("Feature-1", {"x": 0, "y": 0, "z": 0}, {"z": 0})
+
+        self.assertEqual(feature.millingAlignmentArea.value, DEFAULT_MILLING_ALIGNMENT_AREA)
+
+    def test_area_is_clamped_to_minimum_pixel_count_and_image_bounds(self):
+        area = constrain_milling_alignment_area((0.9, 0.9, 0.1, 0.1), (1024, 2048))
+
+        expected = (0.8125, 0.75, 0.1875, 0.25)
+        for actual_value, expected_value in zip(area, expected):
+            self.assertAlmostEqual(actual_value, expected_value)
+
+    def test_square_reference_image_can_contain_minimum_area(self):
+        area = constrain_milling_alignment_area(DEFAULT_MILLING_ALIGNMENT_AREA, (512, 512))
+
+        pixel_width = area[2] * 512
+        pixel_height = area[3] * 512
+        self.assertAlmostEqual(pixel_width * pixel_height, MIN_MILLING_ALIGNMENT_AREA_PIXELS)
+        self.assertAlmostEqual(pixel_width, pixel_height)
+
+    def test_minimum_area_accepts_both_extreme_aspect_ratios(self):
+        for area in ((0.0, 0.0, 0.75, 0.5), (0.0, 0.0, 0.5, 0.75)):
+            with self.subTest(area=area):
+                self.assertEqual(constrain_milling_alignment_area(area, (512, 512)), area)
+
+    def test_area_constrains_narrow_shape_even_with_enough_pixels(self):
+        cases = (
+            ((0.0, 0.0, 0.75, 0.125), (0.0, 0.0, 0.75, 0.5)),
+            ((0.0, 0.0, 0.125, 0.75), (0.0, 0.0, 0.5, 0.75)),
+        )
+        for area, expected in cases:
+            with self.subTest(area=area):
+                self.assertEqual(constrain_milling_alignment_area(area, (1024, 1024)), expected)
+
+    def test_reference_image_must_contain_minimum_area(self):
+        with self.assertRaises(ValueError):
+            constrain_milling_alignment_area((0.1, 0.2, 0.25, 0.25), (200, 300))
+
+    def test_feature_accepts_free_aspect_ratio(self):
+        feature = CryoFeature("Feature-1", {"x": 0, "y": 0, "z": 0}, {"z": 0})
+
+        feature.millingAlignmentArea.value = (0.1, 0.1, 0.3, 0.2)
+
+        self.assertEqual(feature.millingAlignmentArea.value, (0.1, 0.1, 0.3, 0.2))
+
 
 if __name__ == "__main__":
     unittest.main()
