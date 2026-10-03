@@ -298,7 +298,12 @@ class MillingTaskController:
         self.set_milling_tasks(milling_tasks)
         self._update_pattern_panels()
         self._update_pattern_movement_controls()
-        self.draw_alignment_area()
+        if feature is None:
+            # The selected-task callback returns early without a feature, so
+            # explicitly remove previews left by the previous project.
+            self.draw_milling_tasks()
+        else:
+            self.draw_alignment_area()
 
     def _update_pattern_movement_controls(self) -> None:
         """Enable pattern movement controls when a feature can be edited."""

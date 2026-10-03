@@ -81,6 +81,20 @@ class MillingTaskPanelTestCase(test.GuiTestCase):
         test.gui_loop()
         super().tearDown()
 
+    def test_resetting_current_feature_clears_milling_overlays(self) -> None:
+        """Redraw empty overlays when a new project removes its current feature."""
+        self.controller.set_milling_tasks = Mock()
+        self.controller._update_pattern_panels = Mock()
+        self.controller._update_pattern_movement_controls = Mock()
+        self.controller.draw_alignment_area = Mock()
+        self.controller.draw_milling_tasks.reset_mock()
+
+        self.controller._on_current_feature_changes(None)
+
+        self.controller.set_milling_tasks.assert_called_once_with({})
+        self.controller.draw_milling_tasks.assert_called_once_with()
+        self.controller.draw_alignment_area.assert_not_called()
+
     def test_pattern_specific_controls(self) -> None:
         """Show controls specific to the ruler pattern."""
         controls = self.controller.controls
@@ -1185,6 +1199,43 @@ class MillingAlignmentAreaTestCase(test.GuiTestCase):
         self.assertTrue(self.shape.selected.value)
         self.assertGreaterEqual(self.area_changed.call_count, 2)
         self.assertTrue(self.area_changed.call_args.args[1])
+
+    def test_reference_image_drag_keeps_canvas_cursor_until_release(self) -> None:
+        """Leave cursor ownership with the canvas throughout an image drag."""
+        self._send_mouse_event(wx.wxEVT_LEFT_DOWN, Vec(300, 300))
+        drag_cursor = self.canvas.dynamic_cursor
+
+        self.assertTrue(self.canvas.left_dragging)
+        self.assertIsNotNone(drag_cursor)
+
+        self._send_mouse_event(wx.wxEVT_MOTION, Vec(320, 310))
+
+        self.assertTrue(self.canvas.left_dragging)
+        self.assertIs(self.canvas.dynamic_cursor, drag_cursor)
+
+        # This lightweight canvas has no microscope view to recenter on release.
+        with patch.object(self.canvas, "recenter_buffer"), patch.object(
+                self.canvas, "update_drawing"):
+            self._send_mouse_event(wx.wxEVT_LEFT_UP, Vec(320, 310))
+
+        self.assertFalse(self.canvas.left_dragging)
+        self.assertIsNone(self.canvas.dynamic_cursor)
+
+    def test_feature_overlay_does_not_reset_reference_image_drag_cursor(self) -> None:
+        """Keep the canvas drag cursor when the feature overlay sees motion."""
+        feature_overlay = CryoFeatureOverlay.__new__(CryoFeatureOverlay)
+        feature_overlay.active = model.BooleanVA(True)
+        feature_overlay._left_dragging = False
+        feature_overlay._right_dragging = False
+        feature_overlay.cnvs = Mock(left_dragging=True)
+        event = Mock()
+        event.Position = wx.Point(200, 200)
+
+        feature_overlay.on_motion(event)
+
+        feature_overlay.cnvs.reset_dynamic_cursor.assert_not_called()
+        feature_overlay.cnvs.set_default_cursor.assert_not_called()
+        event.Skip.assert_called_once_with()
 
     def test_resizing_area_does_not_pan_canvas(self) -> None:
         """Move on the first corner gesture, then resize while staying selected."""
