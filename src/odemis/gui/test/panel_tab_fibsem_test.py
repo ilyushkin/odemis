@@ -156,6 +156,7 @@ class PnlTabFibsemTest(unittest.TestCase):
             self.panel.chk_move_all_patterns.GetForegroundColour(),
             wx.Colour(layout.theme.text_primary),
         )
+        self.assertTrue(self.panel.chk_move_all_patterns.GetValue())
         self.assertEqual(
             self.panel.btn_snap_patterns_to_feature.GetLabel(),
             "Recenter on Feature",

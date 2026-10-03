@@ -1012,6 +1012,7 @@ class PnlTabFibsem(wx.Panel):
                     controls_panel,
                     label="Move all patterns",
                 )
+                self.chk_move_all_patterns.SetValue(True)
                 self.chk_move_all_patterns.SetForegroundColour(self._theme.text_primary)
                 self.chk_move_all_patterns.SetBackgroundColour(self._theme.section_header)
                 self.chk_move_all_patterns.SetToolTip(
